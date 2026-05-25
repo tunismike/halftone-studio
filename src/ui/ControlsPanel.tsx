@@ -496,7 +496,7 @@ function VectorControls({
                 <option value="bayer">Bayer (structured)</option>
               </select>
             </div>
-            <Slider label="Pitch" value={sp.pitch} min={1} max={20} step={0.25}
+            <Slider label="Pitch" value={sp.pitch} min={1.5} max={20} step={0.25}
               onChange={(v) => setScreen({ kind: 'stipple', stipple: { ...sp, pitch: v } })} />
             <Slider label="Density bias" value={sp.contrast} min={-0.8} max={0.8} step={0.02}
               onChange={(v) => setScreen({ kind: 'stipple', stipple: { ...sp, contrast: v } })} />

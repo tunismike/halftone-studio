@@ -6,10 +6,13 @@
 
 export const MAX_SAMPLES = 120_000;
 
-// Stipple dots are tiny and non-overlapping, so they rasterize far cheaper than
-// big halftone circles — a higher budget is safe and lets stipple get genuinely
-// dense without the mark-explosion hang the default guards against.
-export const MAX_SAMPLES_STIPPLE = 400_000;
+// Stipple shares the default budget. The cell count bounds CANDIDATE cells, but
+// emitted dots scale with image darkness — a dark region at a high cell budget
+// can emit nearly that many circles, and rendering 400k+ arcs in one Path2D
+// fill stalls the worker (the white-page bug). 120k worst-case dots renders
+// reliably. Genuinely higher-density stipple needs a raster dot path in the
+// preview instead of vector arcs — a separate change.
+export const MAX_SAMPLES_STIPPLE = MAX_SAMPLES;
 
 export function clampCell(
   requested: number, width: number, height: number, maxSamples = MAX_SAMPLES,
