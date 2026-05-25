@@ -16,6 +16,7 @@ import { defaultStippleParams, type StippleParams } from './screen/stipple';
 import { defaultRdContourParams, type RdContourParams } from './mode/rd-contour';
 import type { TextureOverlay } from './texture/types';
 import type { MaskOverlay } from './mask/types';
+import type { LayeredComposition } from './layer/types';
 import type { PatternId } from './noise/reaction-diffusion';
 import type { ColorMetric } from './color/palette';
 import type { KernelId } from './dither/kernels';
@@ -131,6 +132,8 @@ export interface PipelineParams {
   maskOverlay?: MaskOverlay;
   superSample?: boolean;
   resampling?: ResamplingMode;
+  /** When present, render a layered composition instead of the single mode. */
+  composition?: LayeredComposition;
 }
 
 export { defaultPreprocess };

@@ -3,7 +3,10 @@ import { Cache } from '../engine/cache';
 import { runCachedPipeline } from '../engine/pipeline-cached';
 import { renderMarkSetToCanvas, renderIndexedToCanvas } from '../engine/render';
 import { generateReferenceImage } from '../engine/image/reference';
-import { lumToRgba } from '../engine/image/luminance';
+import { lumToRgba, rgbaToLum } from '../engine/image/luminance';
+import { regionMask } from '../engine/layer/region';
+import { compositeLayers, type CompositeLayer } from '../engine/layer/composite';
+import type { LayeredComposition, Layer } from '../engine/layer/types';
 import { markSetToSvg } from '../engine/export/svg';
 import { buildZip } from '../engine/export/zip';
 import { generateTexture } from '../engine/texture/recipes';
@@ -33,6 +36,13 @@ const previewCache = new Cache();
 const exportCache = new Cache();
 const thumbCache = new Cache();
 const textureCache = new Map<string, OffscreenCanvas>();
+// One cache per layer id so layer stages don't collide; reused across renders.
+const layerCaches = new Map<string, Cache>();
+function layerCache(id: string): Cache {
+  let c = layerCaches.get(id);
+  if (!c) { c = new Cache(); layerCaches.set(id, c); }
+  return c;
+}
 
 function getTextureCanvas(overlay: TextureOverlay): OffscreenCanvas | null {
   if (overlay.source === 'user') {
@@ -213,7 +223,8 @@ ctx.onmessage = async (e: MessageEvent<Request>) => {
           previewCache.clear();
         }
         const previewSrc = preview ?? source;
-        const out = runCachedPipeline(previewCache, previewSrc, msg.params);
+        const comp = msg.params.composition;
+        const out = comp ? null : runCachedPipeline(previewCache, previewSrc, msg.params);
         const tPipeline = performance.now() - t0;
         if (msg.id < latestProcessId) {
           post({ id: msg.id, kind: 'dropped' });
@@ -223,11 +234,15 @@ ctx.onmessage = async (e: MessageEvent<Request>) => {
         const h = previewSrc.height;
         const tRender0 = performance.now();
         if (previewCanvas) {
-          if (previewCanvas.width !== w) previewCanvas.width = w;
-          if (previewCanvas.height !== h) previewCanvas.height = h;
-          drawOutput(previewCanvas, out, !!msg.params.superSample);
-          applyTextureOverlay(previewCanvas, msg.params.textureOverlay);
-          applyMaskOverlay(previewCanvas, previewSrc, msg.params.maskOverlay);
+          if (comp) {
+            renderComposition(previewCanvas, comp, previewSrc);
+          } else {
+            if (previewCanvas.width !== w) previewCanvas.width = w;
+            if (previewCanvas.height !== h) previewCanvas.height = h;
+            drawOutput(previewCanvas, out!, !!msg.params.superSample);
+            applyTextureOverlay(previewCanvas, msg.params.textureOverlay);
+            applyMaskOverlay(previewCanvas, previewSrc, msg.params.maskOverlay);
+          }
         }
         const tRender = performance.now() - tRender0;
         if (msg.id < latestProcessId) {
@@ -291,13 +306,17 @@ ctx.onmessage = async (e: MessageEvent<Request>) => {
       case 'render-png': {
         if (!source) throw new Error('no source loaded');
         const t0 = performance.now();
-        const out = runCachedPipeline(exportCache, source, msg.params);
         const w = source.width;
         const h = source.height;
         const c = new OffscreenCanvas(w, h);
-        drawOutput(c, out, !!msg.params.superSample);
-        applyTextureOverlay(c, msg.params.textureOverlay);
-        applyMaskOverlay(c, source, msg.params.maskOverlay);
+        if (msg.params.composition) {
+          renderComposition(c, msg.params.composition, source);
+        } else {
+          const out = runCachedPipeline(exportCache, source, msg.params);
+          drawOutput(c, out, !!msg.params.superSample);
+          applyTextureOverlay(c, msg.params.textureOverlay);
+          applyMaskOverlay(c, source, msg.params.maskOverlay);
+        }
         const blob = await c.convertToBlob({ type: 'image/png' });
         post({ id: msg.id, kind: 'png', blob, durationMs: performance.now() - t0 });
         break;
@@ -428,6 +447,66 @@ function scaleMark(m: import('../engine/mark/types').Mark): import('../engine/ma
     case 'poly': return { ...m, pts: m.pts.map((v) => v * 2) };
     case 'glyph': return { ...m, cx: m.cx * 2, cy: m.cy * 2, scale: m.scale * 2 };
   }
+}
+
+// ── layered composition ──────────────────────────────────────────────
+const compScratch = new OffscreenCanvas(1, 1);
+
+// Convert a cached user-mask/selection bitmap to a w×h luminance alpha (0..1).
+function maskAlphaFor(id: string, w: number, h: number): Float32Array | undefined {
+  const bm = userMaskRawCache.get(id);
+  if (!bm) return undefined;
+  const c = new OffscreenCanvas(w, h);
+  const ctx = c.getContext('2d') as OffscreenCanvasRenderingContext2D;
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(bm, 0, 0, w, h);
+  const d = ctx.getImageData(0, 0, w, h).data;
+  const out = new Float32Array(w * h);
+  for (let i = 0, j = 0; i < out.length; i++, j += 4) {
+    out[i] = (d[j] * 0.299 + d[j + 1] * 0.587 + d[j + 2] * 0.114) / 255;
+  }
+  return out;
+}
+
+function layerToParams(layer: Layer): PipelineParams {
+  const t = layer.treatment;
+  return {
+    adjust: t.adjust,
+    preprocess: t.preprocess,
+    mode: t.mode,
+    background: '#000000',
+    foreground: t.foreground,
+    transparent: true,          // layers carry their own alpha; bg comes from the composition
+    textureOverlay: t.textureOverlay,
+  };
+}
+
+function renderComposition(canvas: OffscreenCanvas, comp: LayeredComposition, src: RgbaImage): void {
+  const w = src.width, h = src.height;
+  if (canvas.width !== w) canvas.width = w;
+  if (canvas.height !== h) canvas.height = h;
+  const lum = rgbaToLum(src);
+  const resolveMask = (id: string) => maskAlphaFor(id, w, h);
+
+  const layers: CompositeLayer[] = [];
+  for (const layer of comp.layers) {
+    if (!layer.enabled) continue;
+    const out = runCachedPipeline(layerCache(layer.id), src, layerToParams(layer));
+    if (compScratch.width !== w) compScratch.width = w;
+    if (compScratch.height !== h) compScratch.height = h;
+    drawOutput(compScratch, out);
+    applyTextureOverlay(compScratch, layer.treatment.textureOverlay);
+    const sctx = compScratch.getContext('2d') as OffscreenCanvasRenderingContext2D;
+    const rgba = sctx.getImageData(0, 0, w, h).data;
+    const mask = regionMask(layer.region, { lum, resolveMask }, layer.invertRegion, layer.feather);
+    layers.push({ rgba: new Uint8ClampedArray(rgba), mask, blend: layer.blend, opacity: layer.opacity });
+  }
+
+  const composed = compositeLayers(w, h, comp.background, comp.transparent, layers);
+  const ctx = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
+  const id = ctx.createImageData(w, h);
+  id.data.set(composed);
+  ctx.putImageData(id, 0, 0);
 }
 
 function resampleTo(
