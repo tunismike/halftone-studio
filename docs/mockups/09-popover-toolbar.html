@@ -1,0 +1,36 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>09 · Popover toolbar</title><link rel="stylesheet" href="base.css">
+<style>
+  .stage { position:relative; height:100%; }
+  .canvas { position:absolute; inset:0; border-radius:0; }
+  .topbar { position:absolute; top:0; left:0; right:0; height:52px; display:flex; align-items:center; justify-content:space-between; padding:0 20px; z-index:4; }
+  /* vertical floating toolbar, left-center */
+  .vtool { position:absolute; left:22px; top:50%; transform:translateY(-50%); z-index:5;
+    display:flex; flex-direction:column; gap:3px; padding:7px; border-radius:16px;
+    background:var(--card-glass); backdrop-filter:blur(16px); border:1px solid rgba(255,255,255,.07); box-shadow:var(--shadow-float); }
+  .vt { width:42px; height:42px; border-radius:12px; display:grid; place-items:center; color:var(--ink-soft); cursor:pointer; font-size:15px; position:relative; }
+  .vt.on { background:var(--ink); color:var(--paper); }
+  /* popover attached to active tool */
+  .pop { position:absolute; left:86px; top:50%; transform:translateY(-58%); z-index:6; width:240px;
+    background:var(--card); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow-float); padding:14px 15px; }
+  .pop::before { content:''; position:absolute; left:-7px; top:64px; width:12px; height:12px; background:var(--card);
+    border-left:1px solid var(--line); border-bottom:1px solid var(--line); transform:rotate(45deg); }
+  .pop .h { display:flex; align-items:center; gap:9px; margin-bottom:8px; }
+</style></head>
+<body class="grain theme-dark"><div class="stage">
+  <div class="canvas dark"></div>
+  <div class="topbar"><div class="brand"><span class="mark"></span><h1>Halftone Studio</h1></div>
+    <span class="pill accent">Export</span></div>
+
+  <div class="vtool">
+    <div class="vt">◳</div><div class="vt on">◉</div><div class="vt">◑</div><div class="vt">⊞</div><div class="vt">▦</div><div class="vt">◑</div>
+  </div>
+  <div class="pop">
+    <div class="h"><span class="grip">⠿</span><span class="sec-title">Halftone</span></div>
+    <div class="seg" style="margin-bottom:11px"><span class="on">Grid</span><span>Hex</span><span>Stipple</span></div>
+    <div class="row" style="padding:5px 0"><label>Cell</label><div class="slider"><div class="track"></div><div class="fill" style="width:34%"></div><div class="knob" style="left:34%"></div></div><span class="val">8.0</span></div>
+    <div class="row" style="padding:5px 0"><label>Angle</label><div class="slider"><div class="track"></div><div class="fill" style="width:75%"></div><div class="knob accent" style="left:75%"></div></div><span class="val">45°</span></div>
+    <div class="row" style="padding:5px 0"><label>Mark</label><span class="pill" style="height:26px">Circle</span></div>
+  </div>
+</div></body></html>

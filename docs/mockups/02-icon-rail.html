@@ -1,0 +1,44 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>02 · Icon rail</title><link rel="stylesheet" href="base.css">
+<style>
+  .app { display:grid; grid-template-columns:60px 300px 1fr; height:100%; }
+  .rail { border-right:1px solid var(--line-soft); display:flex; flex-direction:column; align-items:center; padding:14px 0; gap:4px; }
+  .rail .mark { margin-bottom:18px; }
+  .ic { width:38px; height:38px; border-radius:10px; display:grid; place-items:center; color:var(--ink-faint); cursor:pointer; font-size:15px; position:relative; }
+  .ic.on { color:var(--ink); background:var(--paper-2); }
+  .ic.on::before { content:''; position:absolute; left:-12px; top:9px; bottom:9px; width:2px; background:var(--accent); border-radius:2px; }
+  .rail .spacer { flex:1; }
+  .panel { border-right:1px solid var(--line-soft); padding:20px 20px 30px; overflow-y:auto; }
+  .panel .head { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:6px; }
+  .stage { padding:30px; display:flex; align-items:center; justify-content:center; }
+  .canvas { width:min(100%,600px); aspect-ratio:4/5; }
+  .grip-note { margin-top:18px; }
+</style></head>
+<body class="grain"><div class="app">
+  <div class="rail">
+    <span class="mark" style="width:20px;height:20px"></span>
+    <div class="ic">◳</div>
+    <div class="ic on">◉</div>
+    <div class="ic">◧</div>
+    <div class="ic">⊞</div>
+    <div class="ic">◑</div>
+    <div class="ic">▦</div>
+    <div class="spacer"></div>
+    <div class="ic">⌘</div>
+    <div class="ic">⇪</div>
+  </div>
+  <div class="panel">
+    <div class="head"><span class="sec-title">Mode</span><span class="eyebrow">02 / 07</span></div>
+    <div class="hint" style="margin-bottom:16px">One surface at a time. The rail icons reorder by drag.</div>
+    <div class="seg" style="margin-bottom:16px"><span class="on">Halftone</span><span>Dither</span><span>Tonal</span></div>
+    <div class="row"><label>Screen</label><span class="pill" style="height:26px">Grid · 45°</span></div>
+    <div class="row"><label>Mark</label><span class="pill" style="height:26px">Circle</span></div>
+    <div class="row"><label>Cell</label><div class="slider"><div class="track"></div><div class="fill" style="width:32%"></div><div class="knob" style="left:32%"></div></div><span class="val">8.0</span></div>
+    <div class="row"><label>Angle</label><div class="slider"><div class="track"></div><div class="fill" style="width:75%"></div><div class="knob accent" style="left:75%"></div></div><span class="val">45°</span></div>
+    <div class="row"><label>Bleed</label><div class="slider"><div class="track"></div><div class="fill" style="width:50%"></div><div class="knob" style="left:50%"></div></div><span class="val">1.00</span></div>
+    <hr class="divider" style="margin:16px 0">
+    <div class="eyebrow grip-note">⠿ drag rail to reorder tools</div>
+  </div>
+  <div class="stage"><div class="canvas"></div></div>
+</div></body></html>

@@ -1,0 +1,35 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>08 · Right cards</title><link rel="stylesheet" href="base.css">
+<style>
+  .app { display:grid; grid-template-columns:1fr 320px; height:100%; }
+  .stage { position:relative; padding:0; display:flex; align-items:center; justify-content:center; }
+  .stage .top { position:absolute; top:0; left:0; height:52px; display:flex; align-items:center; padding:0 22px; }
+  .canvas { width:min(82%,560px); aspect-ratio:4/5; }
+  .inspector { border-left:1px solid var(--line-soft); padding:16px 16px 30px; overflow-y:auto; display:flex; flex-direction:column; gap:10px; }
+  .insp-top { display:flex; align-items:center; justify-content:space-between; padding:4px 4px 6px; }
+  .card { border:1px solid var(--line); border-radius:12px; background:var(--card); }
+  .card .h { display:flex; align-items:center; gap:9px; padding:11px 13px; cursor:grab; }
+  .card.collapsed .b { display:none; }
+  .card .b { padding:2px 13px 13px; }
+  .ghost { border:1.5px dashed var(--line); border-radius:12px; height:44px; }
+</style></head>
+<body class="grain"><div class="app">
+  <div class="stage">
+    <div class="top"><div class="brand"><span class="mark"></span><h1>Halftone Studio</h1></div></div>
+    <div class="canvas"></div>
+  </div>
+  <div class="inspector">
+    <div class="insp-top"><span class="eyebrow">Inspector · drag ⠿ cards</span><span class="pill accent" style="height:26px">Export</span></div>
+    <div class="card"><div class="h"><span class="grip">⠿</span><span class="sec-title">Mode</span><span class="chevron" style="margin-left:auto">⌄</span></div>
+      <div class="b"><div class="seg" style="margin-bottom:10px"><span class="on">Halftone</span><span>Dither</span></div>
+        <div class="row" style="padding:5px 0"><label>Cell</label><div class="slider"><div class="track"></div><div class="fill" style="width:34%"></div><div class="knob" style="left:34%"></div></div><span class="val">8.0</span></div>
+        <div class="row" style="padding:5px 0"><label>Angle</label><div class="slider"><div class="track"></div><div class="fill" style="width:75%"></div><div class="knob accent" style="left:75%"></div></div><span class="val">45°</span></div></div></div>
+    <div class="card"><div class="h"><span class="grip">⠿</span><span class="sec-title">Tone</span><span class="chevron" style="margin-left:auto">⌄</span></div>
+      <div class="b"><div class="row" style="padding:5px 0"><label>Contrast</label><div class="slider"><div class="track"></div><div class="fill" style="width:60%"></div><div class="knob" style="left:60%"></div></div><span class="val">.20</span></div></div></div>
+    <div class="ghost"></div>
+    <div class="card collapsed"><div class="h"><span class="grip">⠿</span><span class="sec-title">Texture</span><span class="chevron" style="margin-left:auto">›</span></div><div class="b"></div></div>
+    <div class="card collapsed"><div class="h"><span class="grip">⠿</span><span class="sec-title">Mask</span><span class="chevron" style="margin-left:auto">›</span></div><div class="b"></div></div>
+    <div class="card collapsed"><div class="h"><span class="grip">⠿</span><span class="sec-title">Presets</span><span class="chevron" style="margin-left:auto">›</span></div><div class="b"></div></div>
+  </div>
+</div></body></html>

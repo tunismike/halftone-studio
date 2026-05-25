@@ -1,0 +1,154 @@
+/* Inkstudio — shared minimalist aesthetic for Halftone Studio mockups.
+   Paper-and-ink calm, halftone-dot motif, characterful type. */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Hanken+Grotesk:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap');
+
+:root {
+  --paper: #f3efe6;
+  --paper-2: #ebe6da;
+  --card: #faf8f2;
+  --ink: #181510;
+  --ink-soft: #6b6457;
+  --ink-faint: #9b9384;
+  --line: #ddd6c7;
+  --line-soft: #e7e1d4;
+  --accent: #c8442b;       /* vermilion print ink */
+  --accent-soft: #e8d4cd;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow-soft: 0 1px 2px rgba(24,21,16,.04), 0 8px 24px -12px rgba(24,21,16,.12);
+  --shadow-float: 0 2px 6px rgba(24,21,16,.06), 0 24px 48px -16px rgba(24,21,16,.28);
+  --serif: 'Fraunces', Georgia, serif;
+  --sans: 'Hanken Grotesk', system-ui, sans-serif;
+  --mono: 'Geist Mono', ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--sans);
+  background: var(--paper);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  font-size: 14px;
+  overflow: hidden;
+}
+
+/* ---- atmosphere: faint halftone grain over the whole shell ---- */
+.grain::before {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 50;
+  background-image: radial-gradient(rgba(24,21,16,.05) .5px, transparent .6px);
+  background-size: 4px 4px; opacity: .5;
+}
+
+/* ---- the dominant canvas: a faux halftone portrait ---- */
+.canvas {
+  position: relative; overflow: hidden; border-radius: var(--radius);
+  background:
+    radial-gradient(120% 90% at 38% 30%, #fff 0%, #cfc8ba 42%, #6f6657 72%, #2a261d 100%);
+  box-shadow: inset 0 0 0 1px rgba(24,21,16,.06);
+}
+.canvas::after {                 /* the halftone dots */
+  content: ''; position: absolute; inset: 0;
+  background-image: radial-gradient(circle, var(--ink) 38%, transparent 42%);
+  background-size: 7px 7px;
+  mix-blend-mode: multiply;
+  -webkit-mask-image: radial-gradient(120% 90% at 38% 30%, #000 0%, #000 38%, transparent 86%);
+  mask-image: radial-gradient(120% 90% at 38% 30%, #000 0%, #000 38%, transparent 86%);
+  opacity: .9;
+}
+/* dark canvas: dark field, light halftone dots concentrated in the lit area */
+.canvas.dark {
+  background: radial-gradient(118% 92% at 38% 28%, #56504733 0%, #2a2722 38%, #131210 74%, #0a0907 100%), #0a0907;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
+}
+.canvas.dark::after {
+  background-image: radial-gradient(circle, #f4efe4 40%, transparent 45%);
+  mix-blend-mode: screen; opacity: .92;
+  -webkit-mask-image: radial-gradient(118% 92% at 38% 28%, #000 0%, #000 40%, transparent 84%);
+  mask-image: radial-gradient(118% 92% at 38% 28%, #000 0%, #000 40%, transparent 84%);
+}
+
+/* ---- wordmark ---- */
+.brand { display: flex; align-items: baseline; gap: 9px; }
+.brand .mark {
+  width: 16px; height: 16px; border-radius: 50%; align-self: center;
+  background:
+    radial-gradient(circle at 30% 30%, var(--accent) 40%, transparent 42%),
+    radial-gradient(circle, var(--ink) 30%, transparent 34%);
+  background-size: 8px 8px, 4px 4px; background-color: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--ink);
+}
+.brand h1 {
+  font-family: var(--serif); font-weight: 500; font-size: 17px;
+  letter-spacing: -.01em; font-optical-sizing: auto;
+}
+.brand .ver { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); }
+
+/* ---- generic atoms ---- */
+.eyebrow {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--ink-faint);
+}
+.sec-title { font-family: var(--serif); font-size: 14.5px; font-weight: 500; letter-spacing: -.005em; }
+.hint { font-size: 11.5px; color: var(--ink-soft); line-height: 1.45; }
+
+.row { display: flex; align-items: center; gap: 12px; padding: 7px 0; }
+.row label { font-size: 12.5px; color: var(--ink-soft); min-width: 74px; }
+.row .val { font-family: var(--mono); font-size: 11px; color: var(--ink); margin-left: auto; }
+
+/* hairline slider */
+.slider { position: relative; flex: 1; height: 18px; display: flex; align-items: center; }
+.slider .track { height: 2px; width: 100%; background: var(--line); border-radius: 2px; }
+.slider .fill { position: absolute; left: 0; height: 2px; background: var(--ink); border-radius: 2px; }
+.slider .knob {
+  position: absolute; width: 11px; height: 11px; border-radius: 50%;
+  background: var(--paper); border: 1.5px solid var(--ink); transform: translateX(-50%);
+}
+.slider .knob.accent { border-color: var(--accent); }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--card);
+  font-size: 12.5px; color: var(--ink); cursor: pointer; user-select: none;
+}
+.pill.active { border-color: var(--ink); }
+.pill.accent { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--card); }
+.seg span { padding: 6px 13px; font-size: 12px; color: var(--ink-soft); cursor: pointer; }
+.seg span.on { background: var(--ink); color: var(--paper); }
+
+.grip { color: var(--ink-faint); cursor: grab; font-size: 13px; line-height: 1; letter-spacing: -2px; }
+.chevron { color: var(--ink-faint); transition: transform .2s; }
+
+/* preset thumbnails — tiny halftone tiles */
+.thumbs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.thumb { aspect-ratio: 1; border-radius: var(--radius-sm); position: relative; overflow: hidden;
+  background: radial-gradient(110% 90% at 40% 30%, #fff, #8b8273 80%, #2a261d);
+  box-shadow: inset 0 0 0 1px rgba(24,21,16,.07); cursor: pointer; }
+.thumb::after { content:''; position:absolute; inset:0; mix-blend-mode:multiply;
+  background-image: radial-gradient(circle, #000 40%, transparent 44%); }
+.thumb.dots::after { background-size: 5px 5px; }
+.thumb.lines::after { background-image: repeating-linear-gradient(45deg,#000 0 1.4px,transparent 1.4px 4px); }
+.thumb.fine::after { background-size: 3px 3px; }
+.thumb.coarse::after { background-size: 8px 8px; }
+.thumb .cap { position:absolute; left:6px; bottom:5px; font-family:var(--mono); font-size:8.5px; color:#fff; mix-blend-mode:difference; }
+.thumb.sel { box-shadow: 0 0 0 2px var(--accent); }
+
+.divider { height: 1px; background: var(--line-soft); border: 0; }
+
+/* dark theme override */
+.theme-dark {
+  --paper: #161719; --paper-2: #1d1f22; --card: #202327; --ink: #ece9e2;
+  --ink-soft: #9a958c; --ink-faint: #6d6960; --line: #2e3136; --line-soft: #26282c;
+  --accent: #e9663f; --accent-soft: #3a2a25; --card-glass: rgba(32,35,39,.72);
+  --shadow-float: 0 2px 6px rgba(0,0,0,.4), 0 30px 60px -20px rgba(0,0,0,.7);
+}
+.theme-dark .grain::before { background-image: radial-gradient(rgba(255,255,255,.045) .5px, transparent .6px); }
+.theme-dark .canvas::after { mix-blend-mode: screen; }
+.theme-dark .slider .knob { background: var(--card); }
+
+/* small label used as a draggable section handle */
+.drag-affordance { display:inline-flex; align-items:center; gap:8px; }
+.tag { font-family: var(--mono); font-size: 9.5px; letter-spacing:.1em; text-transform: uppercase;
+  color: var(--ink-faint); border:1px solid var(--line); border-radius:6px; padding:2px 6px; }

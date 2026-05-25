@@ -1,0 +1,39 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>07 · Rail + drawer</title><link rel="stylesheet" href="base.css">
+<style>
+  .app { position:relative; height:100%; display:grid; grid-template-columns:64px 1fr; }
+  .rail { border-right:1px solid var(--line-soft); display:flex; flex-direction:column; align-items:center; padding:14px 0; gap:6px; z-index:3; background:var(--paper); }
+  .ic { width:40px; height:40px; border-radius:11px; display:grid; place-items:center; color:var(--ink-faint); cursor:pointer; font-size:15px; }
+  .ic.on { color:var(--ink); background:var(--paper-2); box-shadow:inset 0 0 0 1px var(--line); }
+  .ic small { position:absolute; }
+  .rail .gap { flex:1; }
+  .stage { position:relative; }
+  .stage .top { position:absolute; top:0; left:0; right:0; height:52px; display:flex; align-items:center; justify-content:flex-end; gap:8px; padding:0 22px; z-index:2; }
+  .canvas { position:absolute; inset:20px; border-radius:14px; }
+  /* slide-out drawer overlapping canvas */
+  .drawer { position:absolute; top:20px; bottom:20px; left:0; width:300px; background:var(--card);
+    border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow-float); padding:18px 18px; z-index:4; }
+  .drawer .h { display:flex; align-items:center; gap:9px; margin-bottom:6px; }
+  .drawer .x { margin-left:auto; color:var(--ink-faint); cursor:pointer; }
+</style></head>
+<body class="grain"><div class="app">
+  <div class="rail">
+    <span class="mark" style="width:20px;height:20px;margin-bottom:16px"></span>
+    <div class="ic">◳</div><div class="ic on">◉</div><div class="ic">◑</div><div class="ic">⊞</div><div class="ic">▦</div><div class="ic">◑</div>
+    <div class="gap"></div><div class="ic">⌘</div>
+  </div>
+  <div class="stage">
+    <div class="canvas"></div>
+    <div class="top"><span class="pill">SVG</span><span class="pill accent">Export</span></div>
+    <div class="drawer">
+      <div class="h"><span class="grip">⠿</span><span class="sec-title">Mode</span><span class="x">✕</span></div>
+      <div class="hint" style="margin-bottom:14px">Pick a tool in the rail; its drawer slides over the canvas. Click ✕ to return to full preview.</div>
+      <div class="seg" style="margin-bottom:14px"><span class="on">Halftone</span><span>Dither</span><span>Tonal</span></div>
+      <div class="row"><label>Screen</label><span class="pill" style="height:26px">Grid · 45°</span></div>
+      <div class="row"><label>Cell</label><div class="slider"><div class="track"></div><div class="fill" style="width:34%"></div><div class="knob" style="left:34%"></div></div><span class="val">8.0</span></div>
+      <div class="row"><label>Angle</label><div class="slider"><div class="track"></div><div class="fill" style="width:75%"></div><div class="knob accent" style="left:75%"></div></div><span class="val">45°</span></div>
+      <div class="row"><label>Mark</label><span class="pill" style="height:26px">Circle</span></div>
+    </div>
+  </div>
+</div></body></html>

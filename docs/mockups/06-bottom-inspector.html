@@ -1,0 +1,38 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>06 · Bottom inspector</title><link rel="stylesheet" href="base.css">
+<style>
+  .app { display:grid; grid-template-rows:52px 1fr 132px; height:100%; }
+  .top { display:flex; align-items:center; justify-content:space-between; padding:0 20px; border-bottom:1px solid var(--line-soft); }
+  .stage { padding:24px; display:flex; align-items:center; justify-content:center; min-height:0; }
+  .canvas { height:100%; aspect-ratio:4/5; }
+  .inspector { border-top:1px solid var(--line-soft); background:var(--card); display:flex; align-items:stretch; }
+  .tools { display:flex; align-items:center; gap:2px; padding:0 14px; border-right:1px solid var(--line-soft); }
+  .tt { width:46px; height:46px; border-radius:11px; display:grid; place-items:center; color:var(--ink-faint); cursor:pointer; font-size:15px; }
+  .tt.on { background:var(--paper-2); color:var(--ink); }
+  .insp-body { flex:1; padding:14px 22px; display:flex; flex-direction:column; gap:4px; min-width:0; }
+  .insp-head { display:flex; align-items:baseline; gap:10px; }
+  .controls-line { display:flex; gap:26px; align-items:center; flex-wrap:wrap; margin-top:6px; }
+  .ctl { display:flex; align-items:center; gap:10px; min-width:180px; }
+  .ctl label { font-size:12px; color:var(--ink-soft); }
+</style></head>
+<body class="grain"><div class="app">
+  <div class="top"><div class="brand"><span class="mark"></span><h1>Halftone Studio</h1></div>
+    <div style="display:flex;gap:8px"><span class="pill">SVG</span><span class="pill accent">Export</span></div></div>
+  <div class="stage"><div class="canvas"></div></div>
+  <div class="inspector">
+    <div class="tools">
+      <div class="tt">◳</div><div class="tt on">◉</div><div class="tt">◑</div><div class="tt">▦</div><div class="tt">◑</div><div class="tt">⌘</div>
+    </div>
+    <div class="insp-body">
+      <div class="insp-head"><span class="sec-title">Halftone</span><span class="eyebrow">contextual to selected tool · ⠿ reorder tools</span></div>
+      <div class="controls-line">
+        <div class="ctl"><label>Screen</label><span class="pill" style="height:26px">Grid · 45°</span></div>
+        <div class="ctl"><label>Cell</label><div class="slider"><div class="track"></div><div class="fill" style="width:34%"></div><div class="knob" style="left:34%"></div></div><span class="val">8.0</span></div>
+        <div class="ctl"><label>Angle</label><div class="slider"><div class="track"></div><div class="fill" style="width:75%"></div><div class="knob accent" style="left:75%"></div></div><span class="val">45°</span></div>
+        <div class="ctl"><label>Mark</label><span class="pill" style="height:26px">Circle</span></div>
+        <div class="ctl"><label>Bleed</label><div class="slider"><div class="track"></div><div class="fill" style="width:50%"></div><div class="knob" style="left:50%"></div></div><span class="val">1.00</span></div>
+      </div>
+    </div>
+  </div>
+</div></body></html>

@@ -1,0 +1,49 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>10 · Blocks</title><link rel="stylesheet" href="base.css">
+<style>
+  .app { display:grid; grid-template-columns:1fr 360px; height:100%; }
+  .stage { position:relative; display:flex; align-items:center; justify-content:center; }
+  .stage .top { position:absolute; top:0; left:0; height:52px; display:flex; align-items:center; padding:0 24px; }
+  .canvas { width:min(80%,540px); aspect-ratio:4/5; }
+  .sheet { border-left:1px solid var(--line-soft); padding:22px 22px 40px; overflow-y:auto; }
+  .sheet h2 { font-family:var(--serif); font-weight:500; font-size:19px; margin-bottom:3px; }
+  .blocks { margin-top:14px; display:flex; flex-direction:column; }
+  .block { display:flex; gap:8px; padding:9px 6px; border-radius:9px; }
+  .block:hover { background:var(--paper-2); }
+  .block .handle { color:transparent; cursor:grab; padding-top:2px; transition:color .15s; }
+  .block:hover .handle { color:var(--ink-faint); }
+  .block .content { flex:1; min-width:0; }
+  .block .title { font-size:13.5px; font-weight:500; display:flex; align-items:center; gap:8px; }
+  .block .meta { font-size:11.5px; color:var(--ink-soft); margin-top:1px; }
+  .block.open .body { margin-top:9px; }
+  .insert { padding:6px; color:var(--ink-faint); font-size:11.5px; cursor:pointer; display:flex; align-items:center; gap:7px; opacity:.7; }
+  .dotline { height:1px; background:repeating-linear-gradient(90deg,var(--line) 0 3px, transparent 3px 7px); margin:2px 6px; }
+</style></head>
+<body class="grain"><div class="app">
+  <div class="stage"><div class="top"><div class="brand"><span class="mark"></span><h1>Halftone Studio</h1></div></div>
+    <div class="canvas"></div></div>
+  <div class="sheet">
+    <div style="display:flex;align-items:baseline;justify-content:space-between">
+      <h2>Recipe</h2><span class="pill accent" style="height:26px">Export</span></div>
+    <div class="hint">Each control is a block. Drag the handle to reorder; click a title to expand.</div>
+    <div class="blocks">
+      <div class="block open"><span class="handle">⠿</span><div class="content">
+        <div class="title">Mode <span class="tag">halftone</span></div>
+        <div class="body">
+          <div class="seg" style="margin-bottom:9px"><span class="on">Halftone</span><span>Dither</span><span>Tonal</span></div>
+          <div class="row" style="padding:5px 0"><label>Cell</label><div class="slider"><div class="track"></div><div class="fill" style="width:34%"></div><div class="knob" style="left:34%"></div></div><span class="val">8.0</span></div>
+          <div class="row" style="padding:5px 0"><label>Angle</label><div class="slider"><div class="track"></div><div class="fill" style="width:75%"></div><div class="knob accent" style="left:75%"></div></div><span class="val">45°</span></div>
+        </div></div></div>
+      <div class="dotline"></div>
+      <div class="block open"><span class="handle">⠿</span><div class="content">
+        <div class="title">Tone</div>
+        <div class="body"><div class="row" style="padding:5px 0"><label>Contrast</label><div class="slider"><div class="track"></div><div class="fill" style="width:60%"></div><div class="knob" style="left:60%"></div></div><span class="val">0.20</span></div></div></div></div>
+      <div class="dotline"></div>
+      <div class="block"><span class="handle">⠿</span><div class="content"><div class="title">Texture</div><div class="meta">Crackle glaze · multiply 40%</div></div></div>
+      <div class="block"><span class="handle">⠿</span><div class="content"><div class="title">Mask</div><div class="meta">None</div></div></div>
+      <div class="block"><span class="handle">⠿</span><div class="content"><div class="title">Presets</div><div class="meta">104 · search</div></div></div>
+      <div class="insert">＋ add block</div>
+    </div>
+  </div>
+</div></body></html>

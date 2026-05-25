@@ -1,0 +1,48 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>03 · Floating glass</title><link rel="stylesheet" href="base.css">
+<style>
+  body.theme-dark { }
+  .stage { position:relative; height:100%; padding:0; }
+  .canvas { position:absolute; inset:0; border-radius:0; }
+  .topbar { position:absolute; top:0; left:0; right:0; height:52px; display:flex; align-items:center; justify-content:space-between; padding:0 20px; z-index:5; }
+  .float {
+    position:absolute; border-radius:14px; padding:14px 16px;
+    background:var(--card-glass); backdrop-filter:blur(16px) saturate(1.2);
+    border:1px solid rgba(255,255,255,.07); box-shadow:var(--shadow-float);
+  }
+  .float .bar { display:flex; align-items:center; gap:9px; margin-bottom:10px; cursor:grab; }
+  .float .bar .grip { color:var(--ink-faint); }
+  .p-mode { top:78px; left:24px; width:248px; }
+  .p-tone { top:300px; left:24px; width:248px; }
+  .p-presets { top:78px; right:24px; width:236px; }
+  .thumbs { grid-template-columns:repeat(3,1fr); }
+</style></head>
+<body class="grain theme-dark"><div class="stage">
+  <div class="canvas dark"></div>
+  <div class="topbar">
+    <div class="brand"><span class="mark"></span><h1>Halftone Studio</h1></div>
+    <div style="display:flex;gap:8px"><span class="pill">SVG</span><span class="pill accent">Export</span></div>
+  </div>
+
+  <div class="float p-mode">
+    <div class="bar"><span class="grip">⠿</span><span class="sec-title">Mode</span><span class="tag" style="margin-left:auto">drag</span></div>
+    <div class="seg" style="margin-bottom:12px"><span class="on">Halftone</span><span>Dither</span></div>
+    <div class="row" style="padding:5px 0"><label>Cell</label><div class="slider"><div class="track"></div><div class="fill" style="width:34%"></div><div class="knob" style="left:34%"></div></div><span class="val">8.0</span></div>
+    <div class="row" style="padding:5px 0"><label>Angle</label><div class="slider"><div class="track"></div><div class="fill" style="width:75%"></div><div class="knob accent" style="left:75%"></div></div><span class="val">45°</span></div>
+  </div>
+
+  <div class="float p-tone">
+    <div class="bar"><span class="grip">⠿</span><span class="sec-title">Tone</span><span class="tag" style="margin-left:auto">drag</span></div>
+    <div class="row" style="padding:5px 0"><label>Contrast</label><div class="slider"><div class="track"></div><div class="fill" style="width:60%"></div><div class="knob" style="left:60%"></div></div><span class="val">0.20</span></div>
+    <div class="row" style="padding:5px 0"><label>Gamma</label><div class="slider"><div class="track"></div><div class="fill" style="width:45%"></div><div class="knob" style="left:45%"></div></div><span class="val">1.00</span></div>
+  </div>
+
+  <div class="float p-presets">
+    <div class="bar"><span class="grip">⠿</span><span class="sec-title">Presets</span><span class="tag" style="margin-left:auto">drag</span></div>
+    <div class="thumbs">
+      <div class="thumb dots sel"></div><div class="thumb lines"></div><div class="thumb fine"></div>
+      <div class="thumb coarse"></div><div class="thumb dots"></div><div class="thumb fine"></div>
+    </div>
+  </div>
+</div></body></html>

@@ -1,0 +1,41 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>05 · Dockable panels</title><link rel="stylesheet" href="base.css">
+<style>
+  .app { display:grid; grid-template-rows:52px 1fr; height:100%; }
+  .top { display:flex; align-items:center; justify-content:space-between; padding:0 20px; border-bottom:1px solid var(--line-soft); }
+  .work { display:grid; grid-template-columns:268px 1fr 268px; gap:0; min-height:0; }
+  .dock { padding:14px; overflow-y:auto; display:flex; flex-direction:column; gap:12px; }
+  .dock.left { border-right:1px solid var(--line-soft); }
+  .dock.right { border-left:1px solid var(--line-soft); }
+  .card { border:1px solid var(--line); border-radius:12px; background:var(--card); box-shadow:var(--shadow-soft); overflow:hidden; }
+  .card.dragging { box-shadow:var(--shadow-float); transform:rotate(-.5deg); border-color:var(--accent); }
+  .card .h { display:flex; align-items:center; gap:9px; padding:11px 13px; border-bottom:1px solid var(--line-soft); cursor:grab; }
+  .card .b { padding:12px 13px; }
+  .stage { padding:24px; display:flex; align-items:center; justify-content:center; }
+  .canvas { width:min(100%,520px); aspect-ratio:4/5; }
+  /* dock drop hint */
+  .drop { border:1.5px dashed var(--accent); border-radius:12px; height:54px; display:grid; place-items:center;
+    color:var(--accent); font-family:var(--mono); font-size:10px; letter-spacing:.1em; background:var(--accent-soft); }
+</style></head>
+<body class="grain"><div class="app">
+  <div class="top"><div class="brand"><span class="mark"></span><h1>Halftone Studio</h1></div>
+    <div style="display:flex;gap:8px"><span class="pill">SVG</span><span class="pill accent">Export</span></div></div>
+  <div class="work">
+    <div class="dock left">
+      <div class="card"><div class="h"><span class="grip">⠿</span><span class="sec-title">Mode</span></div>
+        <div class="b"><div class="seg" style="margin-bottom:10px"><span class="on">Halftone</span><span>Dither</span></div>
+          <div class="row" style="padding:5px 0"><label>Cell</label><div class="slider"><div class="track"></div><div class="fill" style="width:34%"></div><div class="knob" style="left:34%"></div></div><span class="val">8.0</span></div></div></div>
+      <div class="card dragging"><div class="h"><span class="grip">⠿</span><span class="sec-title">Tone</span><span class="tag" style="margin-left:auto">moving</span></div>
+        <div class="b"><div class="row" style="padding:5px 0"><label>Contrast</label><div class="slider"><div class="track"></div><div class="fill" style="width:60%"></div><div class="knob" style="left:60%"></div></div><span class="val">.20</span></div></div></div>
+      <div class="drop">drop to dock here</div>
+    </div>
+    <div class="stage"><div class="canvas"></div></div>
+    <div class="dock right">
+      <div class="card"><div class="h"><span class="grip">⠿</span><span class="sec-title">Texture</span></div>
+        <div class="b"><div class="thumbs" style="grid-template-columns:repeat(3,1fr)"><div class="thumb coarse"></div><div class="thumb dots sel"></div><div class="thumb lines"></div></div></div></div>
+      <div class="card"><div class="h"><span class="grip">⠿</span><span class="sec-title">Presets</span></div>
+        <div class="b"><div class="thumbs" style="grid-template-columns:repeat(3,1fr)"><div class="thumb dots"></div><div class="thumb fine"></div><div class="thumb lines"></div></div></div></div>
+    </div>
+  </div>
+</div></body></html>

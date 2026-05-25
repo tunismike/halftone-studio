@@ -1,0 +1,43 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>01 · Accordion</title><link rel="stylesheet" href="base.css">
+<style>
+  .app { display:grid; grid-template-rows:54px 1fr; height:100%; }
+  .top { display:flex; align-items:center; justify-content:space-between; padding:0 22px; border-bottom:1px solid var(--line-soft); }
+  .top .actions { display:flex; gap:8px; align-items:center; }
+  .main { display:grid; grid-template-columns:312px 1fr; gap:0; min-height:0; }
+  .panel { border-right:1px solid var(--line-soft); overflow-y:auto; padding:14px 18px 40px; }
+  .acc { border-bottom:1px solid var(--line-soft); }
+  .acc > summary { list-style:none; cursor:pointer; display:flex; align-items:center; gap:10px; padding:13px 2px; }
+  .acc > summary::-webkit-details-marker { display:none; }
+  .acc[open] .chevron { transform:rotate(90deg); }
+  .acc .body { padding:2px 2px 16px; }
+  .stage { padding:26px; display:flex; align-items:center; justify-content:center; min-height:0; }
+  .canvas { width:min(100%,560px); aspect-ratio:4/5; }
+</style></head>
+<body class="grain"><div class="app">
+  <div class="top">
+    <div class="brand"><span class="mark"></span><h1>Halftone Studio</h1><span class="ver">v3.0</span></div>
+    <div class="actions"><span class="pill">SVG</span><span class="pill">Export PNG</span><span class="pill accent">Export</span></div>
+  </div>
+  <div class="main">
+    <div class="panel">
+      <div class="eyebrow" style="padding:2px 2px 8px">Controls · drag ⠿ to reorder</div>
+      <details class="acc" open><summary><span class="grip">⠿</span><span class="sec-title">Source</span><span class="chevron" style="margin-left:auto">›</span></summary>
+        <div class="body"><div class="hint">portrait.png · 1792 × 2390</div></div></details>
+      <details class="acc" open><summary><span class="grip">⠿</span><span class="sec-title">Mode</span><span class="chevron" style="margin-left:auto">›</span></summary>
+        <div class="body">
+          <div class="seg" style="margin:4px 0 12px"><span class="on">Halftone</span><span>Dither</span><span>Tonal</span><span>CMYK</span></div>
+          <div class="row"><label>Screen</label><span class="pill" style="height:26px">Grid · 45°</span></div>
+          <div class="row"><label>Cell</label><div class="slider"><div class="track"></div><div class="fill" style="width:30%"></div><div class="knob" style="left:30%"></div></div><span class="val">8.0</span></div>
+          <div class="row"><label>Mark</label><span class="pill" style="height:26px">Circle</span></div>
+        </div></details>
+      <details class="acc"><summary><span class="grip">⠿</span><span class="sec-title">Tone</span><span class="chevron" style="margin-left:auto">›</span></summary><div class="body"></div></details>
+      <details class="acc"><summary><span class="grip">⠿</span><span class="sec-title">Preprocess</span><span class="chevron" style="margin-left:auto">›</span></summary><div class="body"></div></details>
+      <details class="acc"><summary><span class="grip">⠿</span><span class="sec-title">Texture</span><span class="chevron" style="margin-left:auto">›</span></summary><div class="body"></div></details>
+      <details class="acc"><summary><span class="grip">⠿</span><span class="sec-title">Mask</span><span class="chevron" style="margin-left:auto">›</span></summary><div class="body"></div></details>
+      <details class="acc"><summary><span class="grip">⠿</span><span class="sec-title">Presets</span><span class="chevron" style="margin-left:auto">›</span></summary><div class="body"></div></details>
+    </div>
+    <div class="stage"><div class="canvas"></div></div>
+  </div>
+</div></body></html>
