@@ -1,63 +1,94 @@
 // Ostromoukhov variable-coefficient error diffusion (Ostromoukhov, SIGGRAPH
-// 2001, "A Simple and Efficient Error-Diffusion Algorithm").
+// 2001, "A Simple and Efficient Error-Diffusion Algorithm"). The coefficients
+// vary with the input tone, breaking up the directional "worm" artifacts of
+// fixed-kernel diffusion. Error is sent to three neighbors: right (+1,0),
+// below-left (-1,+1), below (0,+1), weighted by (cRight, cDownLeft, cDown).
 //
-// Unlike fixed-kernel diffusion, the three coefficients vary with the input
-// tone, which breaks up the directional "worm" artifacts that plague
-// Floyd-Steinberg in shadows and highlights. Error is distributed to three
-// neighbors: right (+1,0), below-left (-1,+1), and below (0,+1), weighted by
-// (cRight, cDownLeft, cDown) / sum, looked up by the pixel's 0..255 tone.
-//
-// The paper specifies coefficients at a sparse set of intensity control points
-// and interpolates between them. We embed that control-point set and linearly
-// interpolate — the standard practical implementation of the method.
+// EXACT 256-row table from Appendix I of the paper (transcribed via the
+// libdither reference data, github.com/robertkist/libdither — values verified:
+// each triplet sums to the paper's per-row divisor). No interpolation.
 
-interface Coeff { i: number; r: number; dl: number; d: number; }
-
-// Control points across the tone range (symmetric about mid-gray). Values are
-// representative of Ostromoukhov's published coefficients: lateral diffusion is
-// suppressed near the extremes (0 / 255) and balanced through the midtones.
-const CONTROL: Coeff[] = [
-  { i: 0, r: 13, dl: 0, d: 5 },
-  { i: 16, r: 13, dl: 3, d: 5 },
-  { i: 43, r: 12, dl: 8, d: 7 },
-  { i: 64, r: 11, dl: 9, d: 10 },
-  { i: 86, r: 10, dl: 10, d: 11 },
-  { i: 108, r: 9, dl: 11, d: 11 },
-  { i: 128, r: 8, dl: 12, d: 12 },
-  { i: 147, r: 9, dl: 11, d: 11 },
-  { i: 169, r: 10, dl: 10, d: 11 },
-  { i: 191, r: 11, dl: 9, d: 10 },
-  { i: 212, r: 12, dl: 8, d: 7 },
-  { i: 239, r: 13, dl: 3, d: 5 },
-  { i: 255, r: 13, dl: 0, d: 5 },
+// 256 triplets (right, downLeft, down), unnormalized integer coefficients.
+const OSTRO_COEFS: readonly number[] = [
+  13,0,5, 13,0,5, 21,0,10, 7,0,4,
+  8,0,5, 47,3,28, 23,3,13, 15,3,8,
+  22,6,11, 43,15,20, 7,3,3, 501,224,211,
+  249,116,103, 165,80,67, 123,62,49, 489,256,191,
+  81,44,31, 483,272,181, 60,35,22, 53,32,19,
+  237,148,83, 471,304,161, 3,2,1, 459,304,161,
+  38,25,14, 453,296,175, 225,146,91, 149,96,63,
+  111,71,49, 63,40,29, 73,46,35, 435,272,217,
+  108,67,56, 13,8,7, 213,130,119, 423,256,245,
+  5,3,3, 281,173,162, 141,89,78, 283,183,150,
+  71,47,36, 285,193,138, 13,9,6, 41,29,18,
+  36,26,15, 289,213,114, 145,109,54, 291,223,102,
+  73,57,24, 293,233,90, 21,17,6, 295,243,78,
+  37,31,9, 27,23,6, 149,129,30, 299,263,54,
+  75,67,12, 43,39,6, 151,139,18, 303,283,30,
+  38,36,3, 305,293,18, 153,149,6, 307,303,6,
+  1,1,0, 101,105,2, 49,53,2, 95,107,6,
+  23,27,2, 89,109,10, 43,55,6, 83,111,14,
+  5,7,1, 172,181,37, 97,76,22, 72,41,17,
+  119,47,29, 4,1,1, 4,1,1, 4,1,1,
+  4,1,1, 4,1,1, 4,1,1, 4,1,1,
+  4,1,1, 4,1,1, 65,18,17, 95,29,26,
+  185,62,53, 30,11,9, 35,14,11, 85,37,28,
+  55,26,19, 80,41,29, 155,86,59, 5,3,2,
+  5,3,2, 5,3,2, 5,3,2, 5,3,2,
+  5,3,2, 5,3,2, 5,3,2, 5,3,2,
+  5,3,2, 5,3,2, 5,3,2, 5,3,2,
+  305,176,119, 155,86,59, 105,56,39, 80,41,29,
+  65,32,23, 55,26,19, 335,152,113, 85,37,28,
+  115,48,37, 35,14,11, 355,136,109, 30,11,9,
+  365,128,107, 185,62,53, 25,8,7, 95,29,26,
+  385,112,103, 65,18,17, 395,104,101, 4,1,1,
+  4,1,1, 395,104,101, 65,18,17, 385,112,103,
+  95,29,26, 25,8,7, 185,62,53, 365,128,107,
+  30,11,9, 355,136,109, 35,14,11, 115,48,37,
+  85,37,28, 335,152,113, 55,26,19, 65,32,23,
+  80,41,29, 105,56,39, 155,86,59, 305,176,119,
+  5,3,2, 5,3,2, 5,3,2, 5,3,2,
+  5,3,2, 5,3,2, 5,3,2, 5,3,2,
+  5,3,2, 5,3,2, 5,3,2, 5,3,2,
+  5,3,2, 155,86,59, 80,41,29, 55,26,19,
+  85,37,28, 35,14,11, 30,11,9, 185,62,53,
+  95,29,26, 65,18,17, 4,1,1, 4,1,1,
+  4,1,1, 4,1,1, 4,1,1, 4,1,1,
+  4,1,1, 4,1,1, 4,1,1, 119,47,29,
+  72,41,17, 97,76,22, 172,181,37, 5,7,1,
+  83,111,14, 43,55,6, 89,109,10, 23,27,2,
+  95,107,6, 49,53,2, 101,105,2, 1,1,0,
+  307,303,6, 153,149,6, 305,293,18, 38,36,3,
+  303,283,30, 151,139,18, 43,39,6, 75,67,12,
+  299,263,54, 149,129,30, 27,23,6, 37,31,9,
+  295,243,78, 21,17,6, 293,233,90, 73,57,24,
+  291,223,102, 145,109,54, 289,213,114, 36,26,15,
+  41,29,18, 13,9,6, 285,193,138, 71,47,36,
+  283,183,150, 141,89,78, 281,173,162, 5,3,3,
+  423,256,245, 213,130,119, 13,8,7, 108,67,56,
+  435,272,217, 73,46,35, 63,40,29, 111,71,49,
+  149,96,63, 225,146,91, 453,296,175, 38,25,14,
+  459,304,161, 3,2,1, 471,304,161, 237,148,83,
+  53,32,19, 60,35,22, 483,272,181, 81,44,31,
+  489,256,191, 123,62,49, 165,80,67, 249,116,103,
+  501,224,211, 7,3,3, 43,15,20, 22,6,11,
+  15,3,8, 23,3,13, 47,3,28, 8,0,5,
+  7,0,4, 21,0,10, 13,0,5, 13,0,5,
 ];
 
-// Precompute a 256-entry table of normalized (right, downLeft, down) weights.
-function buildTable(): Float32Array {
+// Precomputed 256x3 table of weights normalized by each row's coefficient sum.
+const OSTRO_WEIGHTS = (() => {
   const t = new Float32Array(256 * 3);
-  let lo = 0;
-  for (let tone = 0; tone < 256; tone++) {
-    while (lo < CONTROL.length - 2 && CONTROL[lo + 1].i <= tone) lo++;
-    const a = CONTROL[lo];
-    const b = CONTROL[lo + 1];
-    const span = b.i - a.i || 1;
-    const f = Math.max(0, Math.min(1, (tone - a.i) / span));
-    const r = a.r + (b.r - a.r) * f;
-    const dl = a.dl + (b.dl - a.dl) * f;
-    const d = a.d + (b.d - a.d) * f;
-    const sum = r + dl + d || 1;
-    t[tone * 3] = r / sum;
-    t[tone * 3 + 1] = dl / sum;
-    t[tone * 3 + 2] = d / sum;
+  for (let i = 0; i < 256; i++) {
+    const a = OSTRO_COEFS[i * 3], b = OSTRO_COEFS[i * 3 + 1], c = OSTRO_COEFS[i * 3 + 2];
+    const s = a + b + c || 1;
+    t[i * 3] = a / s; t[i * 3 + 1] = b / s; t[i * 3 + 2] = c / s;
   }
   return t;
-}
-
-export const OSTROMOUKHOV_TABLE = buildTable();
+})();
 
 // Returns [wRight, wDownLeft, wDown] for a tone in 0..1.
 export function ostromoukhovWeights(tone01: number): [number, number, number] {
-  let idx = Math.round((tone01 < 0 ? 0 : tone01 > 1 ? 1 : tone01) * 255);
-  idx = idx * 3;
-  return [OSTROMOUKHOV_TABLE[idx], OSTROMOUKHOV_TABLE[idx + 1], OSTROMOUKHOV_TABLE[idx + 2]];
+  let idx = Math.round((tone01 < 0 ? 0 : tone01 > 1 ? 1 : tone01) * 255) * 3;
+  return [OSTRO_WEIGHTS[idx], OSTRO_WEIGHTS[idx + 1], OSTRO_WEIGHTS[idx + 2]];
 }

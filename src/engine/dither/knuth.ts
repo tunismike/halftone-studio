@@ -5,10 +5,9 @@
 // been processed yet (a higher class number), using a small smoothing filter.
 // This removes the fixed left-to-right directional bias of Floyd-Steinberg.
 //
-// The class matrix can be any permutation of 0..63; the choice trades off
-// texture. We use the dispersed Bayer-8 ordering — deterministic and a standard
-// baseline. The dot-diffusion mechanism (class order + diffuse-to-unprocessed)
-// is what distinguishes it from ordered dithering.
+// Uses Knuth's exact 8×8 class matrix and his 8-neighbor diffusion weights
+// (orthogonal 2, diagonal 1) from the 1987 paper, transcribed via the libdither
+// reference data (github.com/robertkist/libdither).
 
 import { srgbToLinear } from '../color/srgb';
 import {
@@ -27,19 +26,19 @@ export interface KnuthParams {
   lut?: PaletteLut;
 }
 
-// Bayer-8 ordering used as the class matrix (values 0..63).
-const BAYER_8 = [
-  [0, 32, 8, 40, 2, 34, 10, 42],
-  [48, 16, 56, 24, 50, 18, 58, 26],
-  [12, 44, 4, 36, 14, 46, 6, 38],
-  [60, 28, 52, 20, 62, 30, 54, 22],
-  [3, 35, 11, 43, 1, 33, 9, 41],
-  [51, 19, 59, 27, 49, 17, 57, 25],
-  [15, 47, 7, 39, 13, 45, 5, 37],
-  [63, 31, 55, 23, 61, 29, 53, 21],
+// Knuth's exact 8×8 class matrix (processing order, values 0..63).
+const KNUTH_CLASS = [
+  [34, 48, 40, 32, 29, 15, 23, 31],
+  [42, 58, 56, 53, 21, 5, 7, 10],
+  [50, 62, 61, 45, 13, 1, 2, 18],
+  [38, 46, 54, 37, 25, 17, 9, 26],
+  [28, 14, 22, 30, 35, 49, 41, 33],
+  [20, 4, 6, 11, 43, 59, 57, 52],
+  [12, 0, 3, 19, 51, 63, 60, 44],
+  [24, 16, 8, 27, 39, 47, 55, 36],
 ];
 
-// 8-neighbor smoothing weights: orthogonal heavier than diagonal.
+// 8-neighbor diffusion weights from the paper: orthogonal 2, diagonal 1.
 const NEIGHBORS: Array<[number, number, number]> = [
   [-1, 0, 2], [1, 0, 2], [0, -1, 2], [0, 1, 2],
   [-1, -1, 1], [1, -1, 1], [-1, 1, 1], [1, 1, 1],
@@ -69,11 +68,11 @@ export function knuthDotDiffusion(src: RgbaImage, p: KnuthParams): IndexedImage 
   const buckets: number[][] = Array.from({ length: 64 }, () => []);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      buckets[BAYER_8[y & 7][x & 7]].push(y * width + x);
+      buckets[KNUTH_CLASS[y & 7][x & 7]].push(y * width + x);
     }
   }
 
-  const classAt = (x: number, y: number): number => BAYER_8[y & 7][x & 7];
+  const classAt = (x: number, y: number): number => KNUTH_CLASS[y & 7][x & 7];
 
   for (let cls = 0; cls < 64; cls++) {
     const bucket = buckets[cls];
