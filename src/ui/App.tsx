@@ -3,6 +3,8 @@ import { ImageUploader } from './ImageUploader';
 import { CanvasPreview } from './CanvasPreview';
 import { ControlsPanel } from './ControlsPanel';
 import { PresetGallery } from './PresetGallery';
+import { AiRecipePanel } from './AiRecipePanel';
+import type { PipelineParams } from '../engine/pipeline';
 import { defaultAdjust, type AdjustParams } from '../engine/image/adjust';
 import { defaultPreprocess, type PreprocessParams } from '../engine/image/preprocess';
 import { defaultMode, type ModeKind, type ResamplingMode } from '../engine/pipeline';
@@ -267,6 +269,19 @@ export function App() {
     triggerDownload(blob, `${baseName}-halftone.zip`);
   };
 
+  // Apply a fully-mapped PipelineParams from the AI recipe validator. The
+  // validator has already clamped/validated everything, so we just fan it out
+  // into the individual state slices the rest of the app reads.
+  const applyPipelineParams = useCallback((p: PipelineParams) => {
+    setAdjust(p.adjust);
+    setPreprocess(p.preprocess ?? defaultPreprocess);
+    setMode(p.mode);
+    setBackground(p.background);
+    setForeground(p.foreground);
+    setTransparent(p.transparent);
+    setActivePresetId(null);
+  }, []);
+
   const applyPresetState = (state: PresetState, presetId: string) => {
     setAdjust(state.adjust);
     setPreprocess(state.preprocess ?? defaultPreprocess);
@@ -380,6 +395,8 @@ export function App() {
           sourceWidth={source?.width ?? 0}
           client={client}
         />
+
+        <AiRecipePanel source={source} applyParams={applyPipelineParams} />
 
         <PresetGallery
           client={client}

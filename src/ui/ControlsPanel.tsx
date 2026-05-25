@@ -12,6 +12,7 @@ import {
   defaultRdContourMode,
   defaultRdScreen,
   defaultSpotMode,
+  defaultStippleScreen,
   defaultTonalMode,
   defaultTonalRamp,
   defaultVectorMode,
@@ -268,6 +269,7 @@ function getActiveCellSize(mode: ModeKind): number | null {
     const s = mode.screen;
     if (s.kind === 'grid' || s.kind === 'hex' || s.kind === 'radial') return s.cellSize;
     if (s.kind === 'reaction-diffusion') return s.rd.cellSize;
+    if (s.kind === 'stipple') return s.stipple.pitch;
   }
   if (mode.kind === 'cmyk' || mode.kind === 'spot') return mode.baseCellSize;
   return null;
@@ -284,6 +286,9 @@ function withActiveCellSize(mode: ModeKind, cell: number): ModeKind | null {
     }
     if (s.kind === 'reaction-diffusion') {
       return { ...mode, screen: { ...s, rd: { ...s.rd, cellSize: cell } } };
+    }
+    if (s.kind === 'stipple') {
+      return { ...mode, screen: { ...s, stipple: { ...s.stipple, pitch: cell } } };
     }
   }
   if (mode.kind === 'cmyk' || mode.kind === 'spot') {
@@ -384,12 +389,14 @@ function VectorControls({
           else if (k === 'hex') setScreen(defaultHexScreen(10, 0));
           else if (k === 'radial') setScreen(defaultRadialScreen(10));
           else if (k === 'poisson') setScreen(defaultPoissonScreen());
+          else if (k === 'stipple') setScreen(defaultStippleScreen());
           else setScreen(defaultRdScreen('coral'));
         }}>
           <option value="grid">Square grid</option>
           <option value="hex">Hex grid</option>
           <option value="radial">Radial</option>
-          <option value="poisson">Stochastic (blue-noise)</option>
+          <option value="poisson">Stochastic (Poisson)</option>
+          <option value="stipple">Stipple (blue-noise)</option>
           <option value="reaction-diffusion">Reaction-diffusion (organic)</option>
         </select>
       </div>
@@ -472,6 +479,31 @@ function VectorControls({
             </label>
             <Slider label="Seed" value={ps.seed} min={1} max={999} step={1}
               onChange={(v) => setScreen({ kind: 'poisson', poisson: { ...ps, seed: v } })} />
+          </>
+        );
+      })()}
+      {mode.screen.kind === 'stipple' && (() => {
+        const sp = mode.screen.stipple;
+        return (
+          <>
+            <Slider label="Pitch" value={sp.pitch} min={1.5} max={20} step={0.5}
+              onChange={(v) => setScreen({ kind: 'stipple', stipple: { ...sp, pitch: v } })} />
+            <Slider label="Tone gamma" value={sp.gamma} min={0.3} max={3} step={0.05}
+              onChange={(v) => setScreen({ kind: 'stipple', stipple: { ...sp, gamma: v } })} />
+            <Slider label="Jitter" value={sp.jitter} min={0} max={1} step={0.05}
+              onChange={(v) => setScreen({ kind: 'stipple', stipple: { ...sp, jitter: v } })} />
+            <div className="row">
+              <label>Mask</label>
+              <select value={sp.maskSize}
+                onChange={(e) => setScreen({ kind: 'stipple', stipple: { ...sp, maskSize: Number(e.target.value) } })}>
+                <option value={32}>32 × 32</option>
+                <option value={64}>64 × 64</option>
+                <option value={128}>128 × 128</option>
+              </select>
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
+              Pair with a circle mark + Fixed radius for uniform dots.
+            </div>
           </>
         );
       })()}

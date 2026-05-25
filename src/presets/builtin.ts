@@ -1231,11 +1231,11 @@ export const BUILTIN_PRESETS: Preset[] = [
     category: 'stochastic',
     adjust: { ...defaultAdjust },
     mode: vector(
-      // Dense Poisson with luminance-driven spacing: closer in dark areas,
-      // sparser in light. fixedRadius decouples dot size from spacing so
-      // dark regions stay densely packed with consistently-small dots.
-      { kind: 'poisson', poisson: { minRadius: 2, maxRadius: 9, densityFromLum: true, seed: 11, k: 30 } },
-      { kind: 'circle', params: { gain: 0, minRatio: 0, maxRatio: 1, fixedRadius: 1.5, distress: { strength: 0.7, seed: 3, mode: 'jitter' } } },
+      // Blue-noise stipple: every cell evaluated against the void-and-cluster
+      // threshold, so detail down to the pitch is preserved. Slightly raised
+      // gamma + jitter gives the organic ink-spray feel.
+      { kind: 'stipple', stipple: { pitch: 3, jitter: 0.8, maskSize: 64, gamma: 0.75 } },
+      { kind: 'circle', params: { gain: 0, minRatio: 0, maxRatio: 1, fixedRadius: 1.4, distress: { strength: 0.4, seed: 3, mode: 'jitter' } } },
     ),
     background: '#ffffff',
     foreground: '#000000',
@@ -1247,9 +1247,23 @@ export const BUILTIN_PRESETS: Preset[] = [
     category: 'stochastic',
     adjust: { ...defaultAdjust },
     mode: vector(
-      // Uniform-size dots; density tracks luminance via Poisson spacing.
-      { kind: 'poisson', poisson: { minRadius: 2.5, maxRadius: 10, densityFromLum: true, seed: 7, k: 30 } },
-      { kind: 'circle', params: { gain: 0, minRatio: 0, maxRatio: 1, fixedRadius: 1.2 } },
+      // Uniform fixed-size dots; density tracks tone via blue-noise threshold.
+      { kind: 'stipple', stipple: { pitch: 2.5, jitter: 0.5, maskSize: 64, gamma: 0.8 } },
+      { kind: 'circle', params: { gain: 0, minRatio: 0, maxRatio: 1, fixedRadius: 1.1 } },
+    ),
+    background: '#ffffff',
+    foreground: '#000000',
+    transparent: false,
+  },
+  {
+    id: 'stipple-fine-detail',
+    name: 'Stipple: Fine detail',
+    category: 'stochastic',
+    adjust: { ...defaultAdjust },
+    mode: vector(
+      // Tight pitch + small dots for maximum detail retention.
+      { kind: 'stipple', stipple: { pitch: 2, jitter: 0.35, maskSize: 128, gamma: 0.85 } },
+      { kind: 'circle', params: { gain: 0, minRatio: 0, maxRatio: 1, fixedRadius: 1 } },
     ),
     background: '#ffffff',
     foreground: '#000000',

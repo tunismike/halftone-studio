@@ -12,6 +12,7 @@ import { defaultGlyphParams, type GlyphParams } from './mark/glyph';
 import { defaultSquareParams, defaultDiamondParams, type SquareParams } from './mark/square';
 import { defaultRegistration, type RegistrationParams } from './mark/registration';
 import { defaultRdScreenParams, type RdScreenParams } from './screen/reaction-diffusion-screen';
+import { defaultStippleParams, type StippleParams } from './screen/stipple';
 import { defaultRdContourParams, type RdContourParams } from './mode/rd-contour';
 import type { TextureOverlay } from './texture/types';
 import type { MaskOverlay } from './mask/types';
@@ -24,6 +25,7 @@ export type ScreenKind =
   | { kind: 'hex'; cellSize: number; angleDeg: number }
   | { kind: 'radial'; cellSize: number; cxFrac: number; cyFrac: number }
   | { kind: 'poisson'; poisson: PoissonParams }
+  | { kind: 'stipple'; stipple: StippleParams }
   | {
       kind: 'reaction-diffusion';
       pattern: PatternId;
@@ -152,6 +154,10 @@ export function defaultPoissonScreen(): ScreenKind {
     kind: 'poisson',
     poisson: { minRadius: 4, maxRadius: 14, densityFromLum: true, seed: 1, k: 24 },
   };
+}
+
+export function defaultStippleScreen(): ScreenKind {
+  return { kind: 'stipple', stipple: { ...defaultStippleParams } };
 }
 
 export function defaultRdScreen(pattern: PatternId = 'coral', iterations = 4000): ScreenKind {

@@ -6,3 +6,5 @@ dist-ssr
 .vite
 coverage
 .gstack/
+.memsearch/
+*.tsbuildinfo

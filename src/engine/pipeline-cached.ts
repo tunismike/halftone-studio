@@ -9,6 +9,7 @@ import { gridScreen } from './screen/grid';
 import { hexScreen } from './screen/hex';
 import { radialScreen } from './screen/radial';
 import { poissonScreen } from './screen/poisson';
+import { stippleScreen } from './screen/stipple';
 import { warpSamples } from './screen/warp';
 import { samplesToCircles } from './mark/circle';
 import { samplesToLineSegments } from './mark/line';
@@ -363,6 +364,14 @@ function runScreen(lum: LumImage, screen: ScreenKind, cache?: Cache): Sample[] {
       return radialScreen(lum, screen);
     case 'poisson':
       return poissonScreen(lum, screen.poisson);
+    case 'stipple': {
+      const ms = screen.stipple.maskSize;
+      const mask = cache
+        ? cache.get<BlueNoiseMask>(`bluenoise:${ms}`, `${ms}`, () =>
+            generateBlueNoiseMask({ size: ms, sigma: 1.5, seed: 1, initialDensity: 0.1 }))
+        : generateBlueNoiseMask({ size: ms, sigma: 1.5, seed: 1, initialDensity: 0.1 });
+      return stippleScreen(lum, screen.stipple, mask);
+    }
     case 'reaction-diffusion': {
       // RD field is independent of source; cache by pattern+iters+size+seed.
       const fieldKey = `${screen.pattern}|${screen.iterations}|${screen.gridSize}|${screen.rd.seed}`;
