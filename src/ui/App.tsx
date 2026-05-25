@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ImageUploader } from './ImageUploader';
 import { CanvasPreview } from './CanvasPreview';
-import { ControlsPanel } from './ControlsPanel';
+import { ControlsPanel, type ToolView as ControlsView } from './ControlsPanel';
 import { PresetGallery } from './PresetGallery';
 import { AiRecipePanel } from './AiRecipePanel';
 import type { PipelineParams } from '../engine/pipeline';
@@ -18,6 +18,8 @@ import { HalftoneClient, type JobEvent } from '../worker/client';
 import type { Preset, PresetState } from '../presets/types';
 
 const CUSTOM_PRESETS_KEY = 'halftone-app:custom-presets';
+
+type ToolId = 'source' | 'mode' | 'adjust' | 'texture' | 'mask' | 'colors' | 'render' | 'recipe' | 'presets';
 
 export function App() {
   const [source, setSource] = useState<RgbaImage | null>(null);
@@ -40,6 +42,7 @@ export function App() {
   const [maskOverlay, setMaskOverlay] = useState<MaskOverlay | undefined>(undefined);
   const [superSample, setSuperSample] = useState<boolean>(false);
   const [resampling, setResampling] = useState<ResamplingMode>('bilinear');
+  const [activeTool, setActiveTool] = useState<ToolId | null>('mode');
 
   const clientRef = useRef<HalftoneClient | null>(null);
   if (!clientRef.current) clientRef.current = new HalftoneClient();
@@ -324,93 +327,64 @@ export function App() {
   const svgEnabled = source != null && mode.kind !== 'raster' && mode.kind !== 'paletteDither' && mode.kind !== 'tonal';
   const bundleEnabled = svgEnabled && (mode.kind === 'cmyk' || mode.kind === 'spot');
 
+  const controlsProps = {
+    adjust, setAdjust, preprocess, setPreprocess, mode, setMode,
+    background, setBackground, foreground, setForeground,
+    transparent, setTransparent, textureOverlay, setTextureOverlay,
+    maskOverlay, setMaskOverlay, superSample, setSuperSample,
+    resampling, setResampling, sourceWidth: source?.width ?? 0, client,
+  };
+
+  const DOCK: { id: ToolId; glyph: string; label: string }[] = [
+    { id: 'source', glyph: '⊕', label: 'Source' },
+    { id: 'mode', glyph: '◉', label: 'Mode' },
+    { id: 'adjust', glyph: '◑', label: 'Tone & preprocess' },
+    { id: 'texture', glyph: '▦', label: 'Texture' },
+    { id: 'mask', glyph: '◐', label: 'Mask' },
+    { id: 'colors', glyph: '⬗', label: 'Colors' },
+    { id: 'render', glyph: '⊞', label: 'Render & DPI' },
+    { id: 'recipe', glyph: '⌘', label: 'AI recipe' },
+    { id: 'presets', glyph: '✦', label: 'Presets' },
+  ];
+  const activeMeta = DOCK.find((d) => d.id === activeTool);
+  const wide = activeTool === 'presets' || activeTool === 'recipe';
+
+  const toolBody = () => {
+    switch (activeTool) {
+      case 'source':
+        return (
+          <>
+            <ImageUploader onImage={onImage} />
+            {source && (
+              <div className="row" style={{ marginTop: 10 }}>
+                <label>Size</label>
+                <span className="val">{source.width} × {source.height}</span>
+              </div>
+            )}
+          </>
+        );
+      case 'recipe':
+        return <AiRecipePanel source={source} applyParams={applyPipelineParams} />;
+      case 'presets':
+        return (
+          <PresetGallery
+            client={client} hasSource={!!source} sourceVersion={sourceVersion}
+            customPresets={customPresets} activeId={activePresetId}
+            onApply={applyPresetState} onSaveCurrent={onSaveCurrent} onDeleteCustom={onDeleteCustom}
+          />
+        );
+      default:
+        return <ControlsPanel {...controlsProps} view={activeTool as ControlsView} />;
+    }
+  };
+
   return (
     <div className="app">
       {dragOver && (
-        <div className="drop-overlay">
-          <div className="drop-overlay-inner">Drop image to load</div>
-        </div>
+        <div className="drop-overlay"><div className="drop-overlay-inner">Drop image to load</div></div>
       )}
-      <header className="header">
-        <h1>Halftone Studio</h1>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {busy && <span className="spinner" title="rendering…" />}
-          {lastDurationMs !== null && !busy && (
-            <span className="duration">{lastDurationMs.toFixed(0)}ms</span>
-          )}
-          <select className="header-select" value={svgMode}
-            onChange={(e) => setSvgMode(e.target.value as SvgMode)}>
-            <option value="editable">SVG: editable</option>
-            <option value="compact">SVG: compact</option>
-            <option value="production">SVG: production</option>
-          </select>
-          <button className="ghost" disabled={!bundleEnabled} onClick={onExportZip}
-            title="Export composite + per-channel SVGs in a ZIP">
-            Export ZIP
-          </button>
-          <button className="ghost" disabled={!svgEnabled} onClick={onExportSvg}>
-            Export SVG
-          </button>
-          <button className="btn" disabled={!source} onClick={onExportPng}>
-            Export PNG
-          </button>
-        </div>
-      </header>
 
-      <aside className="controls">
-        <div className="group">
-          <h2>Source</h2>
-          <ImageUploader onImage={onImage} />
-          {source && (
-            <div className="row" style={{ marginTop: 8 }}>
-              <label>Size</label>
-              <span className="val" style={{ flex: 1, textAlign: 'right' }}>
-                {source.width} × {source.height}
-              </span>
-            </div>
-          )}
-        </div>
-
-        <ControlsPanel
-          adjust={adjust}
-          setAdjust={setAdjust}
-          preprocess={preprocess}
-          setPreprocess={setPreprocess}
-          mode={mode}
-          setMode={setMode}
-          background={background}
-          setBackground={setBackground}
-          foreground={foreground}
-          setForeground={setForeground}
-          transparent={transparent}
-          setTransparent={setTransparent}
-          textureOverlay={textureOverlay}
-          setTextureOverlay={setTextureOverlay}
-          maskOverlay={maskOverlay}
-          setMaskOverlay={setMaskOverlay}
-          superSample={superSample}
-          setSuperSample={setSuperSample}
-          resampling={resampling}
-          setResampling={setResampling}
-          sourceWidth={source?.width ?? 0}
-          client={client}
-        />
-
-        <AiRecipePanel source={source} applyParams={applyPipelineParams} />
-
-        <PresetGallery
-          client={client}
-          hasSource={!!source}
-          sourceVersion={sourceVersion}
-          customPresets={customPresets}
-          activeId={activePresetId}
-          onApply={applyPresetState}
-          onSaveCurrent={onSaveCurrent}
-          onDeleteCustom={onDeleteCustom}
-        />
-      </aside>
-
-      <main className="preview">
+      <main className="stage">
         <CanvasPreview
           ref={setCanvas}
           hasSource={!!source}
@@ -420,6 +394,46 @@ export function App() {
           onUserZoom={resetIdle}
         />
       </main>
+
+      <header className="header">
+        <div className="brand"><span className="mark"></span><h1>Halftone Studio</h1></div>
+        <div className="actions">
+          {busy && <span className="spinner" title="rendering…" />}
+          {lastDurationMs !== null && !busy && <span className="duration">{lastDurationMs.toFixed(0)}ms</span>}
+          <select className="header-select" value={svgMode} onChange={(e) => setSvgMode(e.target.value as SvgMode)}>
+            <option value="editable">SVG: editable</option>
+            <option value="compact">SVG: compact</option>
+            <option value="production">SVG: production</option>
+          </select>
+          <button className="ghost" disabled={!bundleEnabled} onClick={onExportZip} title="Export composite + per-channel SVGs in a ZIP">ZIP</button>
+          <button className="ghost" disabled={!svgEnabled} onClick={onExportSvg}>SVG</button>
+          <button className="btn" disabled={!source} onClick={onExportPng}>Export PNG</button>
+        </div>
+      </header>
+
+      <nav className="dock">
+        {DOCK.map((d, i) => (
+          <span key={d.id} style={{ display: 'contents' }}>
+            {(i === 7) && <span className="dock-sep" />}
+            <button
+              className={`dock-btn${activeTool === d.id ? ' on' : ''}`}
+              onClick={() => setActiveTool((t) => (t === d.id ? null : d.id))}
+            >
+              {d.glyph}<span className="tip">{d.label}</span>
+            </button>
+          </span>
+        ))}
+      </nav>
+
+      {activeTool && (
+        <div className={`popover${wide ? ' wide' : ''}`}>
+          <div className="popover-head">
+            <span className="t">{activeMeta?.label}</span>
+            <button className="x" onClick={() => setActiveTool(null)} title="close">✕</button>
+          </div>
+          {toolBody()}
+        </div>
+      )}
     </div>
   );
 }

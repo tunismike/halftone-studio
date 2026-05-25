@@ -82,7 +82,11 @@ interface Props {
   setResampling: (r: ResamplingMode) => void;
   sourceWidth: number;
   client: import('../worker/client').HalftoneClient;
+  /** When set, render only this tool's group(s) — used by the dock popover. */
+  view?: ToolView;
 }
+
+export type ToolView = 'mode' | 'adjust' | 'texture' | 'mask' | 'colors' | 'render';
 
 type ModeTag = 'raster' | 'vector' | 'cmyk' | 'spot' | 'paletteDither' | 'tonal' | 'rdContour';
 type DitherTag = 'none' | 'threshold' | 'bayer' | 'floyd' | 'atkinson';
@@ -96,8 +100,10 @@ export function ControlsPanel(props: Props) {
     maskOverlay, setMaskOverlay,
     superSample, setSuperSample,
     resampling, setResampling, sourceWidth,
-    client,
+    client, view,
   } = props;
+
+  const show = (v: ToolView) => !view || view === v;
 
   const activeCellSize = getActiveCellSize(mode);
   const setActiveCellSize = (newCell: number) => {
@@ -123,7 +129,7 @@ export function ControlsPanel(props: Props) {
 
   return (
     <>
-      <div className="group">
+      {show('adjust') && <div className="group">
         <h2>Tone</h2>
         <Slider label="Brightness" value={adjust.brightness} min={-1} max={1} step={0.01}
           onChange={(v) => updateAdjust('brightness', v)} />
@@ -136,9 +142,9 @@ export function ControlsPanel(props: Props) {
             onChange={(e) => updateAdjust('invert', e.target.checked)} />
           Invert
         </label>
-      </div>
+      </div>}
 
-      <div className="group">
+      {show('adjust') && <div className="group">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ margin: 0 }}>Preprocess</h2>
           <button className="ghost" onClick={() => setPreprocess(defaultPreprocess)}
@@ -158,9 +164,9 @@ export function ControlsPanel(props: Props) {
           onChange={(v) => updatePreprocess('whitePoint', Math.max(v, preprocess.blackPoint + 1))} />
         <Slider label="Mid gamma" value={preprocess.midGamma} min={0.1} max={3} step={0.01}
           onChange={(v) => updatePreprocess('midGamma', v)} />
-      </div>
+      </div>}
 
-      <div className="group">
+      {show('mode') && <div className="group">
         <h2>Mode</h2>
         <div className="row">
           <label>Type</label>
@@ -205,19 +211,19 @@ export function ControlsPanel(props: Props) {
         {mode.kind === 'rdContour' && (
           <RdContourControls mode={mode} onChange={(m) => setMode(m)} />
         )}
-      </div>
+      </div>}
 
-      <div className="group">
+      {show('texture') && <div className="group">
         <h2>Texture overlay</h2>
         <TextureSection overlay={textureOverlay} onChange={setTextureOverlay} client={client} />
-      </div>
+      </div>}
 
-      <div className="group">
+      {show('mask') && <div className="group">
         <h2>Mask</h2>
         <MaskSection overlay={maskOverlay} onChange={setMaskOverlay} client={client} />
-      </div>
+      </div>}
 
-      <div className="group">
+      {show('colors') && <div className="group">
         <h2>Colors</h2>
         <label className="checkbox-row">
           <input type="checkbox" checked={transparent}
@@ -234,9 +240,9 @@ export function ControlsPanel(props: Props) {
           <label>Foreground</label>
           <input type="color" value={foreground} onChange={(e) => setForeground(e.target.value)} />
         </div>
-      </div>
+      </div>}
 
-      <div className="group">
+      {show('render') && <div className="group">
         <h2>Render</h2>
         <label className="checkbox-row">
           <input type="checkbox" checked={superSample}
@@ -259,7 +265,7 @@ export function ControlsPanel(props: Props) {
             onSetCellSize={setActiveCellSize}
           />
         )}
-      </div>
+      </div>}
     </>
   );
 }
