@@ -496,7 +496,7 @@ function VectorControls({
                 <option value="bayer">Bayer (structured)</option>
               </select>
             </div>
-            <Slider label="Pitch" value={sp.pitch} min={1.5} max={20} step={0.5}
+            <Slider label="Pitch" value={sp.pitch} min={1} max={20} step={0.25}
               onChange={(v) => setScreen({ kind: 'stipple', stipple: { ...sp, pitch: v } })} />
             <Slider label="Density bias" value={sp.contrast} min={-0.8} max={0.8} step={0.02}
               onChange={(v) => setScreen({ kind: 'stipple', stipple: { ...sp, contrast: v } })} />
@@ -583,7 +583,7 @@ function MarkControls({ mark, onChange }: { mark: MarkKind; onChange: (m: MarkKi
           onChange={(v) => onChange({ kind: 'circle', params: { ...p, maxRatio: v } })} />
         <Slider label="Edge-aware" value={p.edgeAwareStrength ?? 0} min={0} max={1} step={0.01}
           onChange={(v) => onChange({ kind: 'circle', params: { ...p, edgeAwareStrength: v } })} />
-        <Slider label="Fixed radius (px)" value={p.fixedRadius ?? 0} min={0} max={20} step={0.1}
+        <Slider label="Fixed radius (px)" value={p.fixedRadius ?? 0} min={0} max={20} step={0.05}
           onChange={(v) => onChange({ kind: 'circle', params: { ...p, fixedRadius: v } })} />
         <DistressBlock distress={p.distress}
           onChange={(d) => onChange({ kind: 'circle', params: { ...p, distress: d } })} />

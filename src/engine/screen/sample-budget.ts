@@ -6,9 +6,16 @@
 
 export const MAX_SAMPLES = 120_000;
 
-export function clampCell(requested: number, width: number, height: number): number {
-  const cell = Math.max(1, requested);
+// Stipple dots are tiny and non-overlapping, so they rasterize far cheaper than
+// big halftone circles — a higher budget is safe and lets stipple get genuinely
+// dense without the mark-explosion hang the default guards against.
+export const MAX_SAMPLES_STIPPLE = 400_000;
+
+export function clampCell(
+  requested: number, width: number, height: number, maxSamples = MAX_SAMPLES,
+): number {
+  const cell = Math.max(0.5, requested);
   const estimate = (width / cell) * (height / cell);
-  if (estimate <= MAX_SAMPLES) return cell;
-  return Math.sqrt((width * height) / MAX_SAMPLES);
+  if (estimate <= maxSamples) return cell;
+  return Math.sqrt((width * height) / maxSamples);
 }

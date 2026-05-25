@@ -4,7 +4,7 @@ import type { BlueNoiseMask } from '../noise/blue-noise-mask';
 import { floydSteinberg } from '../dither/floyd';
 import { atkinson } from '../dither/atkinson';
 import { bayer } from '../dither/bayer';
-import { clampCell } from './sample-budget';
+import { clampCell, MAX_SAMPLES_STIPPLE } from './sample-budget';
 
 export type StippleDither = 'floyd' | 'atkinson' | 'bayer' | 'blue-noise';
 
@@ -28,7 +28,7 @@ export const defaultStippleParams: StippleParams = {
 // (organic Floyd / even blue-noise / sparse Atkinson / structured Bayer) is just
 // the choice of dither kernel — reusing the engine the rest of the app uses.
 export function stippleScreen(lum: LumImage, p: StippleParams, mask: BlueNoiseMask): Sample[] {
-  const pitch = clampCell(p.pitch, lum.width, lum.height);
+  const pitch = clampCell(p.pitch, lum.width, lum.height, MAX_SAMPLES_STIPPLE);
   const jitter = Math.max(0, Math.min(1, p.jitter));
   const cols = Math.max(1, Math.floor(lum.width / pitch));
   const rows = Math.max(1, Math.floor(lum.height / pitch));
