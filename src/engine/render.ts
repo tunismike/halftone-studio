@@ -1,8 +1,28 @@
 import type { MarkSet } from './mark/types';
 import type { IndexedImage } from './dither/error-diffusion-palette';
+import type { TracedRegion } from './trace/trace';
 import { hexToRgb } from './color/srgb';
 
 type AnyCanvas = HTMLCanvasElement | OffscreenCanvas;
+
+export function renderTracedToCanvas(
+  regions: TracedRegion[], width: number, height: number,
+  background: string, transparent: boolean, canvas: AnyCanvas,
+): void {
+  canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext('2d') as
+    | CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+  if (!ctx) return;
+  ctx.clearRect(0, 0, width, height);
+  if (!transparent && background !== 'none') {
+    ctx.fillStyle = background; ctx.fillRect(0, 0, width, height);
+  }
+  for (const r of regions) {
+    const path = new Path2D(r.d);
+    ctx.fillStyle = r.color;
+    ctx.fill(path, 'evenodd');
+  }
+}
 
 export function renderIndexedToCanvas(img: IndexedImage, canvas: AnyCanvas): void {
   canvas.width = img.width;

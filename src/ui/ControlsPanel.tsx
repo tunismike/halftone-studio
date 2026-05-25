@@ -15,6 +15,7 @@ import {
   defaultStippleScreen,
   defaultTonalMode,
   defaultTonalRamp,
+  defaultTraceMode,
   defaultVectorMode,
   makeMark,
   type ChannelConfig,
@@ -88,7 +89,7 @@ interface Props {
 
 export type ToolView = 'mode' | 'adjust' | 'texture' | 'mask' | 'colors' | 'render';
 
-type ModeTag = 'raster' | 'vector' | 'cmyk' | 'spot' | 'paletteDither' | 'tonal' | 'rdContour';
+type ModeTag = 'raster' | 'vector' | 'cmyk' | 'spot' | 'paletteDither' | 'tonal' | 'rdContour' | 'trace';
 type DitherTag = 'none' | 'threshold' | 'bayer' | 'floyd' | 'atkinson';
 
 export function ControlsPanel(props: Props) {
@@ -124,6 +125,7 @@ export function ControlsPanel(props: Props) {
     else if (tag === 'spot') setMode(defaultSpotMode());
     else if (tag === 'paletteDither') setMode(defaultPaletteDitherMode());
     else if (tag === 'tonal') setMode(defaultTonalMode());
+    else if (tag === 'trace') setMode(defaultTraceMode());
     else setMode(defaultRdContourMode());
   };
 
@@ -178,6 +180,7 @@ export function ControlsPanel(props: Props) {
             <option value="paletteDither">Palette dither</option>
             <option value="tonal">Tonal (1–5 inks)</option>
             <option value="rdContour">RD contour strokes</option>
+            <option value="trace">Vector trace (raster → SVG)</option>
           </select>
         </div>
 
@@ -210,6 +213,10 @@ export function ControlsPanel(props: Props) {
 
         {mode.kind === 'rdContour' && (
           <RdContourControls mode={mode} onChange={(m) => setMode(m)} />
+        )}
+
+        {mode.kind === 'trace' && (
+          <TraceControls mode={mode} onChange={(m) => setMode(m)} />
         )}
       </div>}
 
@@ -742,6 +749,34 @@ function RdContourControls({
           onChange={(e) => set({ invert: e.target.checked })} />
         Invert tonal mapping
       </label>
+    </>
+  );
+}
+
+function TraceControls({
+  mode,
+  onChange,
+}: {
+  mode: Extract<ModeKind, { kind: 'trace' }>;
+  onChange: (m: ModeKind) => void;
+}) {
+  const t = mode.trace;
+  const set = (next: Partial<typeof t>): void =>
+    onChange({ ...mode, trace: { ...t, ...next } });
+  return (
+    <>
+      <p className="hint">
+        Posterizes to N flat colors, then traces each color into editable SVG
+        paths. Export as SVG to get vector regions.
+      </p>
+      <Slider label="Colors" value={t.colors} min={2} max={16} step={1}
+        onChange={(v) => set({ colors: v })} />
+      <Slider label="Simplify" value={t.simplify} min={0} max={4} step={0.1}
+        onChange={(v) => set({ simplify: v })} />
+      <Slider label="Smoothing" value={t.smoothing} min={0} max={1} step={0.05}
+        onChange={(v) => set({ smoothing: v })} />
+      <Slider label="Min area" value={t.minArea} min={0} max={200} step={1}
+        onChange={(v) => set({ minArea: v })} />
     </>
   );
 }

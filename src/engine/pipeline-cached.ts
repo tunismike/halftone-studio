@@ -24,6 +24,7 @@ import { findPalette } from './color/palettes-builtin';
 import { paletteErrorDiffusion, type IndexedImage } from './dither/error-diffusion-palette';
 import { riemersmaDither } from './dither/riemersma';
 import { knuthDotDiffusion } from './dither/knuth';
+import { traceImage, type TracedRegion } from './trace/trace';
 import { bayerMask, orderedPaletteDither } from './dither/ordered-palette';
 import { generateBlueNoiseMask, type BlueNoiseMask } from './noise/blue-noise-mask';
 import { simulatePattern, type RdField } from './noise/reaction-diffusion';
@@ -66,7 +67,17 @@ export function runCachedPipeline(
     case 'paletteDither': return runPaletteDither(cache, src, srcKey, p.mode);
     case 'tonal': return runTonal(cache, src, srcKey, p.mode);
     case 'rdContour': return runRdContourMode(cache, src, p, p.mode);
+    case 'trace': return runTrace(cache, src, srcKey, p, p.mode);
   }
+}
+
+function runTrace(
+  cache: Cache, src: RgbaImage, srcKey: string, p: PipelineParams,
+  mode: Extract<ModeKind, { kind: 'trace' }>,
+): Output {
+  const key = `${src.width}x${src.height}|${srcKey}|${JSON.stringify(mode.trace)}`;
+  const regions = cache.get<TracedRegion[]>('trace', key, () => traceImage(src, mode.trace));
+  return { kind: 'traced', regions, width: src.width, height: src.height, background: p.background, transparent: p.transparent };
 }
 
 function getPreprocessed(cache: Cache, src: RgbaImage, pp: PreprocessParams): RgbaImage {

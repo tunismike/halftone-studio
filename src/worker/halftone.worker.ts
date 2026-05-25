@@ -1,11 +1,12 @@
 /// <reference lib="webworker" />
 import { Cache } from '../engine/cache';
 import { runCachedPipeline } from '../engine/pipeline-cached';
-import { renderMarkSetToCanvas, renderIndexedToCanvas } from '../engine/render';
+import { renderMarkSetToCanvas, renderIndexedToCanvas, renderTracedToCanvas } from '../engine/render';
 import { generateReferenceImage } from '../engine/image/reference';
 import { lumToRgba, rgbaToLum } from '../engine/image/luminance';
 import { regionMask } from '../engine/layer/region';
 import { compositeLayers, type CompositeLayer } from '../engine/layer/composite';
+import { colorAssignments, colorRegionMask } from '../engine/layer/color-region';
 import type { LayeredComposition, Layer } from '../engine/layer/types';
 import { markSetToSvg } from '../engine/export/svg';
 import { buildZip } from '../engine/export/zip';
@@ -292,6 +293,11 @@ ctx.onmessage = async (e: MessageEvent<Request>) => {
         if (!source) throw new Error('no source loaded');
         const t0 = performance.now();
         const out = runCachedPipeline(exportCache, source, msg.params);
+        if (out.kind === 'traced') {
+          const xml = tracedToSvg(out.regions, out.width, out.height, out.background, out.transparent);
+          post({ id: msg.id, kind: 'svg', xml, durationMs: performance.now() - t0 });
+          break;
+        }
         if (out.kind !== 'marks') throw new Error('serialize-svg requires a vector mode');
         const opts = { ...msg.opts };
         if (msg.params.textureOverlay) {
@@ -402,6 +408,22 @@ function post(r: Response, transfer?: Transferable[]) {
   else ctx.postMessage(r);
 }
 
+function tracedToSvg(
+  regions: { color: string; d: string }[], w: number, h: number,
+  background: string, transparent: boolean,
+): string {
+  const parts: string[] = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`,
+  ];
+  if (!transparent) parts.push(`<rect width="${w}" height="${h}" fill="${background}"/>`);
+  for (let i = 0; i < regions.length; i++) {
+    const r = regions[i];
+    parts.push(`<g id="region-${i}" fill="${r.color}" fill-rule="evenodd"><path d="${r.d}"/></g>`);
+  }
+  parts.push('</svg>');
+  return parts.join('\n');
+}
+
 function drawOutput(canvas: OffscreenCanvas, out: Output, superSample = false): void {
   if (out.kind === 'raster') {
     const rgba = lumToRgba(out.image);
@@ -413,6 +435,8 @@ function drawOutput(canvas: OffscreenCanvas, out: Output, superSample = false): 
     c.putImageData(id, 0, 0);
   } else if (out.kind === 'indexed') {
     renderIndexedToCanvas(out.image, canvas);
+  } else if (out.kind === 'traced') {
+    renderTracedToCanvas(out.regions, out.width, out.height, out.background, out.transparent, canvas);
   } else if (superSample) {
     // 2× sampler: render marks at 2× resolution then downsample with the
     // canvas's built-in bilinear filter for anti-aliased edges.
@@ -487,6 +511,13 @@ function renderComposition(canvas: OffscreenCanvas, comp: LayeredComposition, sr
   if (canvas.height !== h) canvas.height = h;
   const lum = rgbaToLum(src);
   const resolveMask = (id: string) => maskAlphaFor(id, w, h);
+  // Color-region assignments computed once per N for this source.
+  const assignByCount = new Map<number, Uint8Array>();
+  const resolveColorRegion = (count: number, index: number) => {
+    let a = assignByCount.get(count);
+    if (!a) { a = colorAssignments(src, count); assignByCount.set(count, a); }
+    return colorRegionMask(a, index);
+  };
 
   const layers: CompositeLayer[] = [];
   for (const layer of comp.layers) {
@@ -498,7 +529,7 @@ function renderComposition(canvas: OffscreenCanvas, comp: LayeredComposition, sr
     applyTextureOverlay(compScratch, layer.treatment.textureOverlay);
     const sctx = compScratch.getContext('2d') as OffscreenCanvasRenderingContext2D;
     const rgba = sctx.getImageData(0, 0, w, h).data;
-    const mask = regionMask(layer.region, { lum, resolveMask }, layer.invertRegion, layer.feather);
+    const mask = regionMask(layer.region, { lum, resolveMask, resolveColorRegion }, layer.invertRegion, layer.feather);
     layers.push({ rgba: new Uint8ClampedArray(rgba), mask, blend: layer.blend, opacity: layer.opacity });
   }
 

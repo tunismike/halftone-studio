@@ -14,6 +14,7 @@ import { defaultRegistration, type RegistrationParams } from './mark/registratio
 import { defaultRdScreenParams, type RdScreenParams } from './screen/reaction-diffusion-screen';
 import { defaultStippleParams, type StippleParams } from './screen/stipple';
 import { defaultRdContourParams, type RdContourParams } from './mode/rd-contour';
+import { defaultTraceOptions } from './trace/trace';
 import type { TextureOverlay } from './texture/types';
 import type { MaskOverlay } from './mask/types';
 import type { LayeredComposition } from './layer/types';
@@ -117,6 +118,10 @@ export type ModeKind =
   | {
       kind: 'rdContour';
       params: RdContourParams;
+    }
+  | {
+      kind: 'trace';
+      trace: import('./trace/trace').TraceOptions;
     };
 
 export type ResamplingMode = 'nearest' | 'bilinear' | 'bicubic';
@@ -218,6 +223,10 @@ export function defaultRdContourMode(): ModeKind {
     kind: 'rdContour',
     params: { ...defaultRdContourParams },
   };
+}
+
+export function defaultTraceMode(): ModeKind {
+  return { kind: 'trace', trace: { ...defaultTraceOptions } };
 }
 
 export function defaultPaletteDitherMode(): ModeKind {
