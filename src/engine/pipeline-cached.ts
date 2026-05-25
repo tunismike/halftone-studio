@@ -365,7 +365,9 @@ function runScreen(lum: LumImage, screen: ScreenKind, cache?: Cache): Sample[] {
     case 'poisson':
       return poissonScreen(lum, screen.poisson);
     case 'stipple': {
-      const ms = screen.stipple.maskSize;
+      // Blue-noise mask only matters for the 'blue-noise' dither option, but
+      // generating a fixed 64² mask is cheap + cached, so always supply it.
+      const ms = 64;
       const mask = cache
         ? cache.get<BlueNoiseMask>(`bluenoise:${ms}`, `${ms}`, () =>
             generateBlueNoiseMask({ size: ms, sigma: 1.5, seed: 1, initialDensity: 0.1 }))

@@ -486,23 +486,24 @@ function VectorControls({
         const sp = mode.screen.stipple;
         return (
           <>
-            <Slider label="Pitch" value={sp.pitch} min={1.5} max={20} step={0.5}
-              onChange={(v) => setScreen({ kind: 'stipple', stipple: { ...sp, pitch: v } })} />
-            <Slider label="Tone gamma" value={sp.gamma} min={0.3} max={3} step={0.05}
-              onChange={(v) => setScreen({ kind: 'stipple', stipple: { ...sp, gamma: v } })} />
-            <Slider label="Jitter" value={sp.jitter} min={0} max={1} step={0.05}
-              onChange={(v) => setScreen({ kind: 'stipple', stipple: { ...sp, jitter: v } })} />
             <div className="row">
-              <label>Mask</label>
-              <select value={sp.maskSize}
-                onChange={(e) => setScreen({ kind: 'stipple', stipple: { ...sp, maskSize: Number(e.target.value) } })}>
-                <option value={32}>32 × 32</option>
-                <option value={64}>64 × 64</option>
-                <option value={128}>128 × 128</option>
+              <label>Dither</label>
+              <select value={sp.dither}
+                onChange={(e) => setScreen({ kind: 'stipple', stipple: { ...sp, dither: e.target.value as typeof sp.dither } })}>
+                <option value="floyd">Floyd-Steinberg (organic)</option>
+                <option value="atkinson">Atkinson (sparse)</option>
+                <option value="blue-noise">Blue noise (even)</option>
+                <option value="bayer">Bayer (structured)</option>
               </select>
             </div>
+            <Slider label="Pitch" value={sp.pitch} min={1.5} max={20} step={0.5}
+              onChange={(v) => setScreen({ kind: 'stipple', stipple: { ...sp, pitch: v } })} />
+            <Slider label="Density bias" value={sp.contrast} min={-0.8} max={0.8} step={0.02}
+              onChange={(v) => setScreen({ kind: 'stipple', stipple: { ...sp, contrast: v } })} />
+            <Slider label="Jitter" value={sp.jitter} min={0} max={1} step={0.05}
+              onChange={(v) => setScreen({ kind: 'stipple', stipple: { ...sp, jitter: v } })} />
             <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
-              Pair with a circle mark + Fixed radius for uniform dots.
+              Density = tone via the chosen dither. Pair with a circle mark + Fixed radius for uniform dots.
             </div>
           </>
         );

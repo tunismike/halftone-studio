@@ -1234,7 +1234,7 @@ export const BUILTIN_PRESETS: Preset[] = [
       // Blue-noise stipple: every cell evaluated against the void-and-cluster
       // threshold, so detail down to the pitch is preserved. Slightly raised
       // gamma + jitter gives the organic ink-spray feel.
-      { kind: 'stipple', stipple: { pitch: 3, jitter: 0.8, maskSize: 64, gamma: 0.75 } },
+      { kind: 'stipple', stipple: { pitch: 3, jitter: 0.8, dither: 'floyd', contrast: 0 } },
       { kind: 'circle', params: { gain: 0, minRatio: 0, maxRatio: 1, fixedRadius: 1.4, distress: { strength: 0.4, seed: 3, mode: 'jitter' } } },
     ),
     background: '#ffffff',
@@ -1248,7 +1248,7 @@ export const BUILTIN_PRESETS: Preset[] = [
     adjust: { ...defaultAdjust },
     mode: vector(
       // Uniform fixed-size dots; density tracks tone via blue-noise threshold.
-      { kind: 'stipple', stipple: { pitch: 2.5, jitter: 0.5, maskSize: 64, gamma: 0.8 } },
+      { kind: 'stipple', stipple: { pitch: 2.5, jitter: 0.5, dither: 'blue-noise', contrast: 0 } },
       { kind: 'circle', params: { gain: 0, minRatio: 0, maxRatio: 1, fixedRadius: 1.1 } },
     ),
     background: '#ffffff',
@@ -1262,7 +1262,7 @@ export const BUILTIN_PRESETS: Preset[] = [
     adjust: { ...defaultAdjust },
     mode: vector(
       // Tight pitch + small dots for maximum detail retention.
-      { kind: 'stipple', stipple: { pitch: 2, jitter: 0.35, maskSize: 128, gamma: 0.85 } },
+      { kind: 'stipple', stipple: { pitch: 2, jitter: 0.35, dither: 'atkinson', contrast: 0 } },
       { kind: 'circle', params: { gain: 0, minRatio: 0, maxRatio: 1, fixedRadius: 1 } },
     ),
     background: '#ffffff',
