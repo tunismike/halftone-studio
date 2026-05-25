@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ImageUploader } from './ImageUploader';
-import { CanvasPreview } from './CanvasPreview';
+import { CanvasPreview, type SelectTool } from './CanvasPreview';
 import { ControlsPanel, type ToolView as ControlsView } from './ControlsPanel';
 import { PresetGallery } from './PresetGallery';
 import { AiRecipePanel } from './AiRecipePanel';
 import { LayersPanel } from './LayersPanel';
 import type { Layer, LayeredComposition } from '../engine/layer/types';
+import { makeLayer } from '../engine/layer/generate';
+import { floodSelect, polygonMask, maskToRgba, maskIsEmpty, type Pt } from '../engine/select/select';
+import { traceBinaryMask } from '../engine/trace/trace';
 import type { PipelineParams } from '../engine/pipeline';
 import { defaultAdjust, type AdjustParams } from '../engine/image/adjust';
 import { defaultPreprocess, type PreprocessParams } from '../engine/image/preprocess';
@@ -47,6 +50,10 @@ export function App() {
   const [composition, setComposition] = useState<LayeredComposition | null>(null);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<ToolId | null>('mode');
+  const [selectTool, setSelectTool] = useState<SelectTool>(null);
+  const [tolerance, setTolerance] = useState(0.15);
+  const [pendingSelection, setPendingSelection] =
+    useState<{ mask: Uint8Array; w: number; h: number; outline: Pt[][] } | null>(null);
 
   const clientRef = useRef<HalftoneClient | null>(null);
   if (!clientRef.current) clientRef.current = new HalftoneClient();
@@ -178,6 +185,53 @@ export function App() {
   const effSetTransparent = composition
     ? (t: boolean) => setComposition((p) => (p ? { ...p, transparent: t } : p))
     : setTransparent;
+
+  // ── Interactive selection (P5) ────────────────────────────────────────
+  const commitMask = useCallback((mask: Uint8Array, w: number, h: number) => {
+    if (maskIsEmpty(mask)) { setPendingSelection(null); return; }
+    // traceBinaryMask returns [x,y] tuples; the overlay draws {x,y}.
+    const outline: Pt[][] = traceBinaryMask(mask, w, h).map((loop) =>
+      loop.map(([x, y]) => ({ x, y })));
+    setPendingSelection({ mask, w, h, outline });
+  }, []);
+
+  const onWandPick = useCallback((sx: number, sy: number) => {
+    if (!source) return;
+    commitMask(floodSelect(source, sx, sy, tolerance), source.width, source.height);
+  }, [source, tolerance, commitMask]);
+
+  const onPolygonSelect = useCallback((pts: Pt[]) => {
+    if (!source) return;
+    commitMask(polygonMask(pts, source.width, source.height), source.width, source.height);
+  }, [source, commitMask]);
+
+  const clearSelection = useCallback(() => setPendingSelection(null), []);
+
+  const makeLayerFromSelection = useCallback(async () => {
+    if (!source || !pendingSelection) return;
+    const { mask, w, h } = pendingSelection;
+    const selId = `sel-${Date.now().toString(36)}`;
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const cx = canvas.getContext('2d');
+    if (!cx) return;
+    const id = cx.createImageData(w, h);
+    id.data.set(maskToRgba(mask, w, h));
+    cx.putImageData(id, 0, 0);
+    const bitmap = await createImageBitmap(canvas);
+    await client.setUserMask(selId, bitmap);
+    const selLayer = makeLayer({ name: 'Selection', region: { kind: 'selection', selectionId: selId } });
+    setComposition((c) => {
+      if (!c) {
+        const base = makeLayer({ name: 'Base', region: { kind: 'all' }, foreground });
+        return { layers: [base, selLayer], background, transparent };
+      }
+      return { ...c, layers: [...c.layers, selLayer] };
+    });
+    setActiveLayerId(selLayer.id);
+    setPendingSelection(null);
+    setSelectTool(null);
+  }, [source, pendingSelection, client, foreground, background, transparent]);
 
   // Idle timer driven by a ref so high-frequency user interactions (drag, wheel)
   // don't trigger React re-renders on each event.
@@ -421,6 +475,11 @@ export function App() {
             source={source}
             composition={composition} setComposition={setComposition}
             activeLayerId={activeLayerId} setActiveLayerId={setActiveLayerId}
+            selectTool={selectTool} setSelectTool={setSelectTool}
+            tolerance={tolerance} setTolerance={setTolerance}
+            hasPendingSelection={!!pendingSelection}
+            onMakeLayerFromSelection={makeLayerFromSelection}
+            onClearSelection={clearSelection}
           />
         );
       case 'recipe':
@@ -452,6 +511,10 @@ export function App() {
           sourceWidth={source?.width ?? 0}
           onSourceZoomChange={setSourceZoom}
           onUserZoom={resetIdle}
+          selectTool={selectTool}
+          onWandPick={onWandPick}
+          onPolygonSelect={onPolygonSelect}
+          pendingOutline={pendingSelection?.outline ?? null}
         />
       </main>
 

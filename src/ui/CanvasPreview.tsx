@@ -1,4 +1,7 @@
 import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { Pt } from '../engine/select/select';
+
+export type SelectTool = 'wand' | 'lasso' | 'marquee' | null;
 
 interface Props {
   hasSource: boolean;
@@ -6,6 +9,11 @@ interface Props {
   sourceWidth: number;
   onSourceZoomChange?: (sourceZoom: number) => void;
   onUserZoom?: () => void;
+  // Interactive selection (P5). Coordinates are in SOURCE pixel space.
+  selectTool?: SelectTool;
+  onWandPick?: (sx: number, sy: number) => void;
+  onPolygonSelect?: (pts: Pt[]) => void;
+  pendingOutline?: Pt[][] | null; // source-space loops → marching ants
 }
 
 interface View {
@@ -20,11 +28,15 @@ const MAX_ZOOM = 32;
 const WHEEL_STEP = 1.15;
 
 export const CanvasPreview = forwardRef<HTMLCanvasElement, Props>(function CanvasPreview(
-  { hasSource, isRaster, sourceWidth, onSourceZoomChange, onUserZoom },
+  {
+    hasSource, isRaster, sourceWidth, onSourceZoomChange, onUserZoom,
+    selectTool = null, onWandPick, onPolygonSelect, pendingOutline = null,
+  },
   ref,
 ) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const innerCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const [view, setView] = useState<View>({ zoom: FIT, panX: 0, panY: 0 });
   const [viewportSize, setViewportSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const [canvasIntrinsic, setCanvasIntrinsic] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
@@ -154,6 +166,7 @@ export const CanvasPreview = forwardRef<HTMLCanvasElement, Props>(function Canva
   const dragRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const onMouseDown = (e: React.MouseEvent) => {
     if (!hasSource) return;
+    if (selectTool) return; // selection overlay owns the pointer
     if (e.button !== 0) return;
     dragRef.current = { x: e.clientX, y: e.clientY, panX: view.panX, panY: view.panY };
   };
@@ -204,6 +217,110 @@ export const CanvasPreview = forwardRef<HTMLCanvasElement, Props>(function Canva
   const imageRendering: 'auto' | 'pixelated' =
     isRaster && displayZoom >= 1 ? 'pixelated' : 'auto';
 
+  // ── Interactive selection overlay ──────────────────────────────────────
+  // Map an overlay-canvas client point to SOURCE pixel coordinates.
+  const clientToSource = useCallback((clientX: number, clientY: number): Pt | null => {
+    const c = overlayRef.current;
+    if (!c || !previewScale) return null;
+    const r = c.getBoundingClientRect();
+    if (!r.width || !r.height) return null;
+    const ox = ((clientX - r.left) / r.width) * c.width;   // overlay intrinsic px
+    const oy = ((clientY - r.top) / r.height) * c.height;
+    return { x: ox / previewScale, y: oy / previewScale };
+  }, [previewScale]);
+
+  // In-progress gesture, in SOURCE coords. Kept in a ref to avoid re-renders
+  // on every pointermove; the RAF loop reads it for live drawing.
+  const gestureRef = useRef<{ type: 'lasso' | 'marquee'; pts: Pt[] } | null>(null);
+
+  const onOverlayPointerDown = (e: React.PointerEvent) => {
+    if (!selectTool || !hasSource) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const p = clientToSource(e.clientX, e.clientY);
+    if (!p) return;
+    try { overlayRef.current?.setPointerCapture(e.pointerId); } catch { /* no active pointer */ }
+    if (selectTool === 'wand') { onWandPick?.(p.x, p.y); return; }
+    gestureRef.current = { type: selectTool, pts: [p] };
+  };
+  const onOverlayPointerMove = (e: React.PointerEvent) => {
+    const g = gestureRef.current;
+    if (!g) return;
+    const p = clientToSource(e.clientX, e.clientY);
+    if (!p) return;
+    if (g.type === 'marquee') g.pts[1] = p;
+    else {
+      const last = g.pts[g.pts.length - 1];
+      if (!last || Math.hypot(p.x - last.x, p.y - last.y) > 1.5 / Math.max(0.1, sourceZoom)) g.pts.push(p);
+    }
+  };
+  const onOverlayPointerUp = (e: React.PointerEvent) => {
+    const g = gestureRef.current;
+    gestureRef.current = null;
+    try { overlayRef.current?.releasePointerCapture?.(e.pointerId); } catch { /* not captured */ }
+    if (!g) return;
+    if (g.type === 'marquee' && g.pts.length === 2) {
+      const [a, b] = g.pts;
+      onPolygonSelect?.([{ x: a.x, y: a.y }, { x: b.x, y: a.y }, { x: b.x, y: b.y }, { x: a.x, y: b.y }]);
+    } else if (g.type === 'lasso' && g.pts.length >= 3) {
+      onPolygonSelect?.(g.pts);
+    }
+  };
+
+  // Marching-ants + live-gesture drawing on the overlay, animated via RAF.
+  useEffect(() => {
+    const c = overlayRef.current;
+    if (!c || !canvasIntrinsic.w) return;
+    if (c.width !== canvasIntrinsic.w) c.width = canvasIntrinsic.w;
+    if (c.height !== canvasIntrinsic.h) c.height = canvasIntrinsic.h;
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    const active = !!selectTool || (pendingOutline?.length ?? 0) > 0;
+    if (!active) { ctx.clearRect(0, 0, c.width, c.height); return; }
+    let raf = 0;
+    const s = previewScale; // source → overlay-px
+    const draw = (t: number) => {
+      ctx.clearRect(0, 0, c.width, c.height);
+      const lw = Math.max(1, 1.5 / displayZoom);
+      // committed selection → animated dashed ants
+      if (pendingOutline) {
+        for (const loop of pendingOutline) {
+          if (loop.length < 2) continue;
+          ctx.beginPath();
+          ctx.moveTo(loop[0].x * s, loop[0].y * s);
+          for (let i = 1; i < loop.length; i++) ctx.lineTo(loop[i].x * s, loop[i].y * s);
+          ctx.closePath();
+          ctx.lineWidth = lw;
+          ctx.setLineDash([6 / displayZoom, 4 / displayZoom]);
+          ctx.lineDashOffset = -(t / 50) % 10;
+          ctx.strokeStyle = '#000'; ctx.stroke();
+          ctx.lineDashOffset = (-(t / 50) % 10) + 5 / displayZoom;
+          ctx.strokeStyle = '#fff'; ctx.stroke();
+        }
+      }
+      // live gesture → solid accent path
+      const g = gestureRef.current;
+      if (g) {
+        ctx.setLineDash([]);
+        ctx.lineWidth = lw;
+        ctx.strokeStyle = '#e9663f';
+        ctx.fillStyle = 'rgba(233,102,63,0.15)';
+        ctx.beginPath();
+        if (g.type === 'marquee' && g.pts.length === 2) {
+          const [a, b] = g.pts;
+          ctx.rect(a.x * s, a.y * s, (b.x - a.x) * s, (b.y - a.y) * s);
+        } else {
+          ctx.moveTo(g.pts[0].x * s, g.pts[0].y * s);
+          for (let i = 1; i < g.pts.length; i++) ctx.lineTo(g.pts[i].x * s, g.pts[i].y * s);
+        }
+        ctx.fill(); ctx.stroke();
+      }
+      raf = requestAnimationFrame(draw);
+    };
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+  }, [selectTool, pendingOutline, canvasIntrinsic.w, canvasIntrinsic.h, previewScale, displayZoom, sourceZoom]);
+
   return (
     <div
       ref={viewportRef}
@@ -211,17 +328,39 @@ export const CanvasPreview = forwardRef<HTMLCanvasElement, Props>(function Canva
       style={{ cursor: hasSource ? (dragging ? 'grabbing' : 'grab') : 'default' }}
       onMouseDown={onMouseDown}
     >
-      <canvas
-        ref={setCanvasRef}
+      <div
+        className="canvas-stack"
         style={{
           display: hasSource ? 'block' : 'none',
+          position: 'relative',
           width: `${cssW}px`,
           height: `${cssH}px`,
           transform: `translate(${view.panX}px, ${view.panY}px)`,
-          imageRendering,
           transition: dragging ? 'none' : 'transform 80ms linear',
         }}
-      />
+      >
+        <canvas
+          ref={setCanvasRef}
+          style={{
+            position: 'absolute', inset: 0,
+            width: '100%', height: '100%',
+            imageRendering,
+          }}
+        />
+        <canvas
+          ref={overlayRef}
+          className="select-overlay"
+          style={{
+            position: 'absolute', inset: 0,
+            width: '100%', height: '100%',
+            pointerEvents: selectTool ? 'auto' : 'none',
+            cursor: selectTool === 'wand' ? 'crosshair' : selectTool ? 'crosshair' : 'default',
+          }}
+          onPointerDown={onOverlayPointerDown}
+          onPointerMove={onOverlayPointerMove}
+          onPointerUp={onOverlayPointerUp}
+        />
+      </div>
       {!hasSource && <div className="placeholder">Upload an image to begin.</div>}
       {hasSource && (
         <div className="zoom-controls" onMouseDown={(e) => e.stopPropagation()}>

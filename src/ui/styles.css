@@ -45,7 +45,8 @@ body { -webkit-font-smoothing: antialiased; font-size: 14px; }
 }
 
 .canvas-viewport { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; user-select: none; }
-.canvas-viewport canvas { box-shadow: 0 24px 60px -18px rgba(0,0,0,.7); will-change: transform; pointer-events: none; }
+.canvas-viewport .canvas-stack { box-shadow: 0 24px 60px -18px rgba(0,0,0,.7); will-change: transform; }
+.canvas-viewport canvas { pointer-events: none; }
 .canvas-viewport .placeholder { color: var(--faint); font-family: var(--serif); font-size: 16px; font-weight: 400; }
 
 /* ───────── floating top bar ───────── */
@@ -173,6 +174,18 @@ button.ghost:disabled { opacity: .35; cursor: not-allowed; }
 .layer-row .layer-mode { flex: 0 0 auto; color: var(--muted); font-family: var(--mono); font-size: 10px; }
 .layer-row .x { flex: 0 0 auto; font-size: 12px; }
 .layer-detail { border-top: 1px solid var(--border-soft); padding-top: 10px; margin-top: 2px; }
+
+/* Selection tools */
+.sub-h { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 7px; font-weight: 600; }
+.select-tools { margin-bottom: 6px; }
+.seg { display: flex; gap: 4px; }
+.seg-btn {
+  flex: 1; background: var(--bg-2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 0; font-size: 12px; font-family: var(--sans); cursor: pointer;
+}
+.seg-btn:hover:not(:disabled) { border-color: var(--muted); }
+.seg-btn.on { border-color: var(--accent); color: var(--accent); background: var(--bg); }
+.seg-btn:disabled { opacity: 0.4; cursor: default; }
 
 /* ───────── upload ───────── */
 .upload {

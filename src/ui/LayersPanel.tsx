@@ -2,8 +2,14 @@ import { useState } from 'react';
 import type { RgbaImage } from '../engine/image/types';
 import { generateComposition } from '../engine/layer/generate';
 import type { Layer, LayerBlend, LayeredComposition } from '../engine/layer/types';
+import type { SelectTool } from './CanvasPreview';
 
 const BLENDS: LayerBlend[] = ['normal', 'multiply', 'screen', 'darken', 'lighten'];
+const TOOLS: { id: Exclude<SelectTool, null>; label: string }[] = [
+  { id: 'wand', label: 'Wand' },
+  { id: 'lasso', label: 'Lasso' },
+  { id: 'marquee', label: 'Box' },
+];
 
 interface Props {
   source: RgbaImage | null;
@@ -11,13 +17,56 @@ interface Props {
   setComposition: (c: LayeredComposition | null) => void;
   activeLayerId: string | null;
   setActiveLayerId: (id: string | null) => void;
+  selectTool: SelectTool;
+  setSelectTool: (t: SelectTool) => void;
+  tolerance: number;
+  setTolerance: (v: number) => void;
+  hasPendingSelection: boolean;
+  onMakeLayerFromSelection: () => void;
+  onClearSelection: () => void;
 }
 
 export function LayersPanel({
   source, composition, setComposition, activeLayerId, setActiveLayerId,
+  selectTool, setSelectTool, tolerance, setTolerance,
+  hasPendingSelection, onMakeLayerFromSelection, onClearSelection,
 }: Props) {
   const [kind, setKind] = useState<'tone' | 'color'>('color');
   const [count, setCount] = useState(4);
+
+  const selectionSection = (
+    <div className="select-tools">
+      <div className="seg">
+        {TOOLS.map((t) => (
+          <button key={t.id}
+            className={`seg-btn${selectTool === t.id ? ' on' : ''}`}
+            disabled={!source}
+            onClick={() => setSelectTool(selectTool === t.id ? null : t.id)}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {selectTool === 'wand' && (
+        <Slider label="Tolerance" value={tolerance} min={0} max={0.6} step={0.01}
+          onChange={setTolerance} />
+      )}
+      {selectTool && (
+        <p className="hint" style={{ margin: '6px 0 0' }}>
+          {selectTool === 'wand' ? 'Click a region on the canvas.'
+            : selectTool === 'lasso' ? 'Drag to draw a freehand outline.'
+            : 'Drag a rectangle on the canvas.'} Close this panel for a full view — the tool stays on.
+        </p>
+      )}
+      {hasPendingSelection && (
+        <div className="row" style={{ marginTop: 8, gap: 6 }}>
+          <button className="btn" style={{ flex: 1 }} onClick={onMakeLayerFromSelection}>
+            Make layer from selection
+          </button>
+          <button className="ghost" onClick={onClearSelection} title="Discard selection">Clear</button>
+        </div>
+      )}
+    </div>
+  );
 
   const generate = () => {
     if (!source) return;
@@ -33,6 +82,10 @@ export function LayersPanel({
           Split the image into editable layers, then give each its own halftone,
           stipple, trace, or texture treatment. Layers composite top-to-bottom.
         </p>
+        <h3 className="sub-h">Select a region</h3>
+        {selectionSection}
+        <hr className="divider" />
+        <h3 className="sub-h">Auto-split</h3>
         <div className="row">
           <label>Split by</label>
           <select value={kind} onChange={(e) => setKind(e.target.value as 'tone' | 'color')}>
@@ -73,6 +126,7 @@ export function LayersPanel({
         Click a layer to make it active, then edit its style in the Mode / Tone /
         Texture / Colors panels. Drag-reorder and grouped SVG land next.
       </p>
+      {selectionSection}
       <div className="layer-list">
         {display.map((l) => (
           <div key={l.id}
