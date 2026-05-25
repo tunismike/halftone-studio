@@ -4,6 +4,8 @@ import { CanvasPreview } from './CanvasPreview';
 import { ControlsPanel, type ToolView as ControlsView } from './ControlsPanel';
 import { PresetGallery } from './PresetGallery';
 import { AiRecipePanel } from './AiRecipePanel';
+import { LayersPanel } from './LayersPanel';
+import type { Layer, LayeredComposition } from '../engine/layer/types';
 import type { PipelineParams } from '../engine/pipeline';
 import { defaultAdjust, type AdjustParams } from '../engine/image/adjust';
 import { defaultPreprocess, type PreprocessParams } from '../engine/image/preprocess';
@@ -19,7 +21,7 @@ import type { Preset, PresetState } from '../presets/types';
 
 const CUSTOM_PRESETS_KEY = 'halftone-app:custom-presets';
 
-type ToolId = 'source' | 'mode' | 'adjust' | 'texture' | 'mask' | 'colors' | 'render' | 'recipe' | 'presets';
+type ToolId = 'source' | 'mode' | 'adjust' | 'texture' | 'mask' | 'colors' | 'render' | 'layers' | 'recipe' | 'presets';
 
 export function App() {
   const [source, setSource] = useState<RgbaImage | null>(null);
@@ -42,6 +44,8 @@ export function App() {
   const [maskOverlay, setMaskOverlay] = useState<MaskOverlay | undefined>(undefined);
   const [superSample, setSuperSample] = useState<boolean>(false);
   const [resampling, setResampling] = useState<ResamplingMode>('bilinear');
+  const [composition, setComposition] = useState<LayeredComposition | null>(null);
+  const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<ToolId | null>('mode');
 
   const clientRef = useRef<HalftoneClient | null>(null);
@@ -132,9 +136,48 @@ export function App() {
   }, [client]);
 
   const params = useMemo(
-    () => ({ adjust, preprocess, mode, background, foreground, transparent, textureOverlay, maskOverlay, superSample, resampling }),
-    [adjust, preprocess, mode, background, foreground, transparent, textureOverlay, maskOverlay, superSample, resampling],
+    () => ({ adjust, preprocess, mode, background, foreground, transparent, textureOverlay, maskOverlay, superSample, resampling, composition: composition ?? undefined }),
+    [adjust, preprocess, mode, background, foreground, transparent, textureOverlay, maskOverlay, superSample, resampling, composition],
   );
+
+  // When a composition is active and a layer is selected, the shared control
+  // panels (Mode/Tone/Texture/Colors) edit that layer's treatment instead of
+  // the global single-mode state. Mixed styles fall out of this routing.
+  const activeLayer = composition && activeLayerId
+    ? composition.layers.find((l) => l.id === activeLayerId) ?? null
+    : null;
+
+  const patchActiveLayer = useCallback((patch: (l: Layer) => Layer) => {
+    setComposition((c) => {
+      if (!c || !activeLayerId) return c;
+      return { ...c, layers: c.layers.map((l) => (l.id === activeLayerId ? patch(l) : l)) };
+    });
+  }, [activeLayerId]);
+
+  const eff = activeLayer
+    ? {
+        mode: activeLayer.treatment.mode,
+        setMode: (m: ModeKind) => patchActiveLayer((l) => ({ ...l, treatment: { ...l.treatment, mode: m } })),
+        adjust: activeLayer.treatment.adjust,
+        setAdjust: (a: AdjustParams) => patchActiveLayer((l) => ({ ...l, treatment: { ...l.treatment, adjust: a } })),
+        preprocess: activeLayer.treatment.preprocess ?? defaultPreprocess,
+        setPreprocess: (p: PreprocessParams) => patchActiveLayer((l) => ({ ...l, treatment: { ...l.treatment, preprocess: p } })),
+        textureOverlay: activeLayer.treatment.textureOverlay,
+        setTextureOverlay: (t: TextureOverlay | undefined) => patchActiveLayer((l) => ({ ...l, treatment: { ...l.treatment, textureOverlay: t } })),
+        foreground: activeLayer.treatment.foreground,
+        setForeground: (c: string) => patchActiveLayer((l) => ({ ...l, treatment: { ...l.treatment, foreground: c } })),
+      }
+    : { mode, setMode, adjust, setAdjust, preprocess, setPreprocess, textureOverlay, setTextureOverlay, foreground, setForeground };
+
+  // Background + transparency are composition-global when layered.
+  const effBackground = composition ? composition.background : background;
+  const effSetBackground = composition
+    ? (c: string) => setComposition((p) => (p ? { ...p, background: c } : p))
+    : setBackground;
+  const effTransparent = composition ? composition.transparent : transparent;
+  const effSetTransparent = composition
+    ? (t: boolean) => setComposition((p) => (p ? { ...p, transparent: t } : p))
+    : setTransparent;
 
   // Idle timer driven by a ref so high-frequency user interactions (drag, wheel)
   // don't trigger React re-renders on each event.
@@ -165,7 +208,9 @@ export function App() {
 
   // Write current state to URL hash (debounced via timeout)
   useEffect(() => {
-    const t = window.setTimeout(() => writeStateToHash(params), 400);
+    // Composition is excluded from the hash (color-region palettes balloon the URL).
+    const { composition: _omit, ...hashState } = params;
+    const t = window.setTimeout(() => writeStateToHash(hashState), 400);
     return () => clearTimeout(t);
   }, [params]);
 
@@ -324,13 +369,19 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adjust, preprocess, mode, background, foreground, transparent]);
 
-  const svgEnabled = source != null && mode.kind !== 'raster' && mode.kind !== 'paletteDither' && mode.kind !== 'tonal';
+  // Grouped SVG export for compositions lands in P6; for now SVG export covers
+  // single-mode vector docs only.
+  const svgEnabled = source != null && !composition && mode.kind !== 'raster' && mode.kind !== 'paletteDither' && mode.kind !== 'tonal';
   const bundleEnabled = svgEnabled && (mode.kind === 'cmyk' || mode.kind === 'spot');
 
   const controlsProps = {
-    adjust, setAdjust, preprocess, setPreprocess, mode, setMode,
-    background, setBackground, foreground, setForeground,
-    transparent, setTransparent, textureOverlay, setTextureOverlay,
+    adjust: eff.adjust, setAdjust: eff.setAdjust,
+    preprocess: eff.preprocess, setPreprocess: eff.setPreprocess,
+    mode: eff.mode, setMode: eff.setMode,
+    background: effBackground, setBackground: effSetBackground,
+    foreground: eff.foreground, setForeground: eff.setForeground,
+    transparent: effTransparent, setTransparent: effSetTransparent,
+    textureOverlay: eff.textureOverlay, setTextureOverlay: eff.setTextureOverlay,
     maskOverlay, setMaskOverlay, superSample, setSuperSample,
     resampling, setResampling, sourceWidth: source?.width ?? 0, client,
   };
@@ -343,6 +394,7 @@ export function App() {
     { id: 'mask', glyph: '◐', label: 'Mask' },
     { id: 'colors', glyph: '⬗', label: 'Colors' },
     { id: 'render', glyph: '⊞', label: 'Render & DPI' },
+    { id: 'layers', glyph: '❏', label: 'Layers' },
     { id: 'recipe', glyph: '⌘', label: 'AI recipe' },
     { id: 'presets', glyph: '✦', label: 'Presets' },
   ];
@@ -362,6 +414,14 @@ export function App() {
               </div>
             )}
           </>
+        );
+      case 'layers':
+        return (
+          <LayersPanel
+            source={source}
+            composition={composition} setComposition={setComposition}
+            activeLayerId={activeLayerId} setActiveLayerId={setActiveLayerId}
+          />
         );
       case 'recipe':
         return <AiRecipePanel source={source} applyParams={applyPipelineParams} />;
@@ -388,7 +448,7 @@ export function App() {
         <CanvasPreview
           ref={setCanvas}
           hasSource={!!source}
-          isRaster={mode.kind === 'raster' || mode.kind === 'paletteDither' || mode.kind === 'tonal'}
+          isRaster={!!composition || mode.kind === 'raster' || mode.kind === 'paletteDither' || mode.kind === 'tonal'}
           sourceWidth={source?.width ?? 0}
           onSourceZoomChange={setSourceZoom}
           onUserZoom={resetIdle}
@@ -414,7 +474,7 @@ export function App() {
       <nav className="dock">
         {DOCK.map((d, i) => (
           <span key={d.id} style={{ display: 'contents' }}>
-            {(i === 7) && <span className="dock-sep" />}
+            {(i === 8) && <span className="dock-sep" />}
             <button
               className={`dock-btn${activeTool === d.id ? ' on' : ''}`}
               onClick={() => setActiveTool((t) => (t === d.id ? null : d.id))}
