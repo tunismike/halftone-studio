@@ -8,6 +8,7 @@ import {
 } from '../color/palette';
 import type { RgbaImage } from '../image/types';
 import type { KernelDef } from './kernels';
+import { ostromoukhovWeights } from './ostromoukhov';
 
 export interface PaletteDitherParams {
   palette: PreparedPalette;
@@ -52,6 +53,7 @@ export function paletteErrorDiffusion(
 
   const indices = new Uint16Array(np);
   const taps = p.kernel.taps;
+  const variable = p.kernel.variable === 'ostromoukhov';
 
   for (let y = 0; y < height; y++) {
     const rtl = p.serpentine && (y & 1) === 1;
@@ -78,6 +80,18 @@ export function paletteErrorDiffusion(
       const eg = g - q.g;
       const eb = b - q.b;
 
+      if (variable) {
+        // Ostromoukhov: per-pixel weights indexed by this pixel's luminance,
+        // distributed to right / below-left / below (dx mirrored on RTL rows).
+        const tone = 0.299 * r + 0.587 * g + 0.114 * b;
+        const [wR, wDL, wD] = ostromoukhovWeights(tone);
+        const dxR = rtl ? -1 : 1;
+        diffuse(workR, workG, workB, x + dxR, y, width, height, er, eg, eb, wR);
+        diffuse(workR, workG, workB, x - dxR, y + 1, width, height, er, eg, eb, wDL);
+        diffuse(workR, workG, workB, x, y + 1, width, height, er, eg, eb, wD);
+        continue;
+      }
+
       // Distribute error using the kernel; mirror dx on RTL rows.
       for (let t = 0; t < taps.length; t++) {
         const tap = taps[t];
@@ -97,4 +111,16 @@ export function paletteErrorDiffusion(
     width, height, indices,
     paletteSrgb: p.palette.hexes,
   };
+}
+
+function diffuse(
+  workR: Float32Array, workG: Float32Array, workB: Float32Array,
+  nx: number, ny: number, width: number, height: number,
+  er: number, eg: number, eb: number, w: number,
+): void {
+  if (nx < 0 || nx >= width || ny >= height || w === 0) return;
+  const ni = ny * width + nx;
+  workR[ni] += er * w;
+  workG[ni] += eg * w;
+  workB[ni] += eb * w;
 }

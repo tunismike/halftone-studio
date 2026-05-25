@@ -23,6 +23,7 @@ import { buildPaletteLut, preparePalette, type PaletteLut, type PreparedPalette 
 import { findPalette } from './color/palettes-builtin';
 import { paletteErrorDiffusion, type IndexedImage } from './dither/error-diffusion-palette';
 import { riemersmaDither } from './dither/riemersma';
+import { knuthDotDiffusion } from './dither/knuth';
 import { bayerMask, orderedPaletteDither } from './dither/ordered-palette';
 import { generateBlueNoiseMask, type BlueNoiseMask } from './noise/blue-noise-mask';
 import { simulatePattern, type RdField } from './noise/reaction-diffusion';
@@ -241,6 +242,8 @@ function runPaletteAlgorithm(
         amplitude: a.amplitude, lut,
       });
     }
+    case 'knuth':
+      return knuthDotDiffusion(src, { palette, metric: mode.metric, lut });
   }
 }
 

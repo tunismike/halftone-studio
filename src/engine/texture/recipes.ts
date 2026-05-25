@@ -27,7 +27,171 @@ export function generateTexture(recipe: TextureRecipeId, params: RecipeParams): 
     case 'binarized-noise':    return binarizedNoise(params);
     case 'anisotropic-fabric': return anisotropicFabric(params);
     case 'crack-network':      return crackNetwork(params);
+    case 'warped-halftone':    return warpedHalftone(params);
+    case 'ink-stroke':         return inkStroke(params);
+    case 'crackle-glaze':      return crackleGlaze(params);
+    case 'spatter':            return spatter(params);
+    case 'woven-fiber':        return wovenFiber(params);
   }
+}
+
+// ─── 13. Warped halftone (sine-displaced dot grid — ThrashTones feel) ─
+
+function warpedHalftone(p: RecipeParams): GrayTexture {
+  const size = p.size ?? 256;
+  const seed = p.seed ?? 1;
+  const cell = p.cellSize ?? 10;
+  const warpAmt = (p.intensity ?? 0.4) * cell;
+  const contrast = p.contrast ?? 1.4;
+  const values = new Float32Array(size * size);
+  values.fill(1);
+  const cellsPerSide = Math.max(1, Math.round(size / cell));
+  const actual = size / cellsPerSide;
+  const twoPi = Math.PI * 2;
+  for (let cy = 0; cy < cellsPerSide; cy++) {
+    for (let cx = 0; cx < cellsPerSide; cx++) {
+      const u = (cx + 0.5) / cellsPerSide;
+      const v = (cy + 0.5) / cellsPerSide;
+      // Sine warp + a little tileable noise on the dot centers.
+      const wx = Math.sin(v * twoPi * 2 + seed) * warpAmt;
+      const wy = Math.cos(u * twoPi * 2 + seed) * warpAmt;
+      const n = tileableFbm(u, v, 3, 3, 0.5, 2, seed);
+      const r = contrastCurve(n, contrast) * actual * 0.55;
+      const ccx = (cx + 0.5) * actual + wx;
+      const ccy = (cy + 0.5) * actual + wy;
+      const ri = Math.ceil(r);
+      for (let dy = -ri; dy <= ri; dy++) {
+        for (let dx = -ri; dx <= ri; dx++) {
+          if (dx * dx + dy * dy > r * r) continue;
+          const px = (((ccx + dx) | 0) % size + size) % size;
+          const py = (((ccy + dy) | 0) % size + size) % size;
+          values[py * size + px] = 0;
+        }
+      }
+    }
+  }
+  return { size, values };
+}
+
+// ─── 14. Ink stroke (broken hatching strokes — scratchboard) ─────────
+
+function inkStroke(p: RecipeParams): GrayTexture {
+  const size = p.size ?? 256;
+  const seed = p.seed ?? 1;
+  const angleDeg = p.angleDeg ?? 45;
+  const density = p.density ?? 0.5;
+  const breakAmt = p.jitter ?? 0.4;
+  const values = new Float32Array(size * size);
+  values.fill(1);
+  const rand = rng(seed);
+  const theta = (angleDeg * Math.PI) / 180;
+  const ux = Math.cos(theta);
+  const uy = Math.sin(theta);
+  const count = Math.round(density * size * 1.5);
+  for (let i = 0; i < count; i++) {
+    const x0 = rand() * size;
+    const y0 = rand() * size;
+    const len = size * (0.2 + rand() * 0.5);
+    const width = 0.6 + rand() * 1.6;
+    const steps = Math.ceil(len);
+    for (let s = 0; s < steps; s++) {
+      // Broken strokes: skip segments to mimic a dry nib.
+      if (rand() < breakAmt * 0.15) continue;
+      const sx = x0 + ux * s;
+      const sy = y0 + uy * s;
+      const wi = Math.ceil(width);
+      for (let w = -wi; w <= wi; w++) {
+        const px = (((sx - uy * w) | 0) % size + size) % size;
+        const py = (((sy + ux * w) | 0) % size + size) % size;
+        if (Math.abs(w) <= width) values[py * size + px] = 0;
+      }
+    }
+  }
+  return { size, values };
+}
+
+// ─── 15. Crackle glaze (multi-scale Worley ridges — ceramic) ─────────
+
+function crackleGlaze(p: RecipeParams): GrayTexture {
+  const size = p.size ?? 256;
+  const seed = p.seed ?? 1;
+  const cells = p.cellsPerSide ?? 8;
+  const jitter = p.jitter ?? 0.85;
+  const threshold = p.threshold ?? 0.05;
+  const contrast = p.contrast ?? 9;
+  const values = new Float32Array(size * size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const u = x / size;
+      const v = y / size;
+      // Two octaves of Voronoi ridges → big cracks with fine sub-cracks.
+      const a = tileableWorley(u, v, cells, jitter, seed);
+      const b = tileableWorley(u, v, cells * 3, jitter, seed + 71);
+      const edgeA = clamp01(((a.f2 - a.f1) - threshold) * contrast);
+      const edgeB = clamp01(((b.f2 - b.f1) - threshold * 1.5) * contrast * 1.4);
+      values[y * size + x] = Math.min(edgeA, edgeB === 0 ? edgeA : Math.min(edgeA, 1 - (1 - edgeB) * 0.6));
+    }
+  }
+  return { size, values };
+}
+
+// ─── 16. Spatter (sparse variable-size ink droplets) ─────────────────
+
+function spatter(p: RecipeParams): GrayTexture {
+  const size = p.size ?? 256;
+  const seed = p.seed ?? 1;
+  const density = p.density ?? 0.25;
+  const maxR = p.scale ?? 6;
+  const values = new Float32Array(size * size);
+  values.fill(1);
+  const rand = rng(seed);
+  const count = Math.round(density * size);
+  for (let i = 0; i < count; i++) {
+    const cx = rand() * size;
+    const cy = rand() * size;
+    // Power-law size: many tiny specks, a few big blots.
+    const t = rand();
+    const r = 0.5 + Math.pow(t, 3) * maxR;
+    const ri = Math.ceil(r);
+    for (let dy = -ri; dy <= ri; dy++) {
+      for (let dx = -ri; dx <= ri; dx++) {
+        if (dx * dx + dy * dy > r * r) continue;
+        const px = (((cx + dx) | 0) % size + size) % size;
+        const py = (((cy + dy) | 0) % size + size) % size;
+        values[py * size + px] = 0;
+      }
+    }
+  }
+  return { size, values };
+}
+
+// ─── 17. Woven fiber (two-direction thread lines — canvas/denim) ─────
+
+function wovenFiber(p: RecipeParams): GrayTexture {
+  const size = p.size ?? 256;
+  const seed = p.seed ?? 1;
+  const threads = p.threads ?? 48;
+  const contrast = p.contrast ?? 2.2;
+  const noiseAmt = p.intensity ?? 0.4;
+  const values = new Float32Array(size * size);
+  const twoPi = Math.PI * 2;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const u = x / size;
+      const v = y / size;
+      // Over/under weave: warp and weft alternate which is on top per cell.
+      const warp = 0.5 + 0.5 * Math.sin(u * twoPi * threads);
+      const weft = 0.5 + 0.5 * Math.sin(v * twoPi * threads);
+      const cellX = Math.floor(u * threads);
+      const cellY = Math.floor(v * threads);
+      const over = (cellX + cellY) & 1 ? warp : weft;
+      const n = tileableFbm(u, v, threads * 0.5, 3, 0.55, 2, seed);
+      let val = over * (1 - noiseAmt) + n * noiseAmt;
+      val = clamp01(0.5 + (val - 0.5) * contrast);
+      values[y * size + x] = val;
+    }
+  }
+  return { size, values };
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────

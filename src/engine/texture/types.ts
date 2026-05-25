@@ -13,7 +13,12 @@ export type TextureRecipeId =
   | 'cellular-speckle'
   | 'binarized-noise'
   | 'anisotropic-fabric'
-  | 'crack-network';
+  | 'crack-network'
+  | 'warped-halftone'
+  | 'ink-stroke'
+  | 'crackle-glaze'
+  | 'spatter'
+  | 'woven-fiber';
 
 export interface GrayTexture {
   size: number;

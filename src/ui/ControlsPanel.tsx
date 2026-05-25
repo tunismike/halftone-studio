@@ -798,12 +798,14 @@ function PaletteDitherControls({
           if (t === 'error-diffusion') onChange({ ...mode, algorithm: { kind: 'error-diffusion', kernel: 'floyd-steinberg', serpentine: true } });
           else if (t === 'riemersma') onChange({ ...mode, algorithm: { kind: 'riemersma', historyLen: 16, decay: 0.5 } });
           else if (t === 'ordered-bayer') onChange({ ...mode, algorithm: { kind: 'ordered-bayer', size: 4, amplitude: 0.18 } });
-          else onChange({ ...mode, algorithm: { kind: 'ordered-bluenoise', size: 64, amplitude: 0.18 } });
+          else if (t === 'ordered-bluenoise') onChange({ ...mode, algorithm: { kind: 'ordered-bluenoise', size: 64, amplitude: 0.18 } });
+          else onChange({ ...mode, algorithm: { kind: 'knuth' } });
         }}>
           <option value="error-diffusion">Error diffusion (kernel)</option>
           <option value="riemersma">Riemersma / Hilbert</option>
           <option value="ordered-bayer">Ordered (Bayer)</option>
           <option value="ordered-bluenoise">Ordered (blue noise)</option>
+          <option value="knuth">Knuth dot diffusion</option>
         </select>
       </div>
       {algo.kind === 'error-diffusion' && (
@@ -941,12 +943,14 @@ function TonalControls({
           if (t === 'error-diffusion') onChange({ ...mode, algorithm: { kind: 'error-diffusion', kernel: 'floyd-steinberg', serpentine: true } });
           else if (t === 'riemersma') onChange({ ...mode, algorithm: { kind: 'riemersma', historyLen: 16, decay: 0.5 } });
           else if (t === 'ordered-bayer') onChange({ ...mode, algorithm: { kind: 'ordered-bayer', size: 4, amplitude: 0.18 } });
-          else onChange({ ...mode, algorithm: { kind: 'ordered-bluenoise', size: 64, amplitude: 0.18 } });
+          else if (t === 'ordered-bluenoise') onChange({ ...mode, algorithm: { kind: 'ordered-bluenoise', size: 64, amplitude: 0.18 } });
+          else onChange({ ...mode, algorithm: { kind: 'knuth' } });
         }}>
           <option value="error-diffusion">Error diffusion (kernel)</option>
           <option value="riemersma">Riemersma / Hilbert</option>
           <option value="ordered-bayer">Ordered (Bayer)</option>
           <option value="ordered-bluenoise">Ordered (blue noise)</option>
+          <option value="knuth">Knuth dot diffusion</option>
         </select>
       </div>
       {algo.kind === 'error-diffusion' && (

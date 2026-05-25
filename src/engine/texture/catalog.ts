@@ -68,6 +68,23 @@ export const BUNDLED_TEXTURES: BundledTextureDef[] = [
   // ── Crack network ─────────────────────────────────────────
   { id: 'plastisol-crack', name: 'Plastisol crack', recipe: 'crack-network', params: { size: 256, seed: 1,  cellsPerSide: 22, jitter: 0.85, intensity: 1.8, threshold: 0.0 } },
   { id: 'shattered-glass', name: 'Shattered glass', recipe: 'crack-network', params: { size: 256, seed: 5,  cellsPerSide: 14, jitter: 0.95, intensity: 1.4, threshold: 0.0 } },
+
+  // ── Warped halftone (ThrashTones) ─────────────────────────
+  { id: 'thrash-dots',    name: 'Thrash dots',     recipe: 'warped-halftone', params: { size: 256, seed: 1, cellSize: 10, intensity: 0.45, contrast: 1.4 } },
+  { id: 'wavy-dots',      name: 'Wavy dots',       recipe: 'warped-halftone', params: { size: 256, seed: 4, cellSize: 14, intensity: 0.6, contrast: 1.2 } },
+
+  // ── Ink stroke / scratchboard ─────────────────────────────
+  { id: 'scratchboard',   name: 'Scratchboard',    recipe: 'ink-stroke', params: { size: 256, seed: 1, angleDeg: 45, density: 0.6, jitter: 0.4 } },
+  { id: 'cross-hatch',    name: 'Cross-hatch',     recipe: 'ink-stroke', params: { size: 256, seed: 2, angleDeg: 20, density: 0.45, jitter: 0.3 } },
+
+  // ── Crackle glaze ─────────────────────────────────────────
+  { id: 'crackle-glaze',  name: 'Crackle glaze',   recipe: 'crackle-glaze', params: { size: 256, seed: 1, cellsPerSide: 8, jitter: 0.85, threshold: 0.05, contrast: 9 } },
+
+  // ── Spatter ───────────────────────────────────────────────
+  { id: 'ink-spatter',    name: 'Ink spatter',     recipe: 'spatter', params: { size: 256, seed: 3, density: 0.3, scale: 7 } },
+
+  // ── Woven fiber ───────────────────────────────────────────
+  { id: 'canvas-weave',   name: 'Canvas weave',    recipe: 'woven-fiber', params: { size: 256, seed: 1, threads: 44, contrast: 2.2, intensity: 0.4 } },
 ];
 
 export function findBundledTexture(id: string): BundledTextureDef | undefined {

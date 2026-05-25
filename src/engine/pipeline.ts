@@ -70,7 +70,8 @@ export type PaletteAlgorithm =
   | { kind: 'error-diffusion'; kernel: KernelId; serpentine: boolean }
   | { kind: 'riemersma'; historyLen: number; decay: number }
   | { kind: 'ordered-bayer'; size: 2 | 4 | 8; amplitude: number }
-  | { kind: 'ordered-bluenoise'; size: number; amplitude: number };
+  | { kind: 'ordered-bluenoise'; size: number; amplitude: number }
+  | { kind: 'knuth' };
 
 export type ModeKind =
   | { kind: 'raster'; dither: DitherKind }

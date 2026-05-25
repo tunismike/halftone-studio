@@ -16,6 +16,9 @@ export interface KernelDef {
   // Whether to trust the kernel sum as a complete error transport.
   // Atkinson deliberately drops 25% — propagated total = 6/8.
   partial: boolean;
+  // Ostromoukhov uses per-pixel coefficients indexed by tone instead of fixed
+  // taps; the diffusion loop branches on this flag and ignores `taps`.
+  variable?: 'ostromoukhov';
 }
 
 export type KernelId =
@@ -29,7 +32,8 @@ export type KernelId =
   | 'atkinson'
   | 'stevenson-arce'
   | 'shiau-fan'
-  | 'pigeon';
+  | 'pigeon'
+  | 'ostromoukhov';
 
 export type KernelCategory = 'diffusion' | 'bi-thread';
 
@@ -178,12 +182,19 @@ export const KERNELS: Record<KernelId, KernelDef> = {
     ),
     partial: false,
   },
+  ostromoukhov: {
+    id: 'ostromoukhov',
+    name: 'Ostromoukhov (variable)',
+    taps: [], // unused — coefficients are computed per pixel from tone
+    partial: false,
+    variable: 'ostromoukhov',
+  },
 };
 
 export const KERNEL_IDS: KernelId[] = [
   'floyd-steinberg', 'jjn', 'stucki', 'burkes',
   'sierra-full', 'sierra-2', 'sierra-lite', 'atkinson',
-  'stevenson-arce', 'shiau-fan', 'pigeon',
+  'stevenson-arce', 'shiau-fan', 'pigeon', 'ostromoukhov',
 ];
 
 export const KERNEL_CATEGORY: Record<KernelId, KernelCategory> = {
@@ -198,4 +209,5 @@ export const KERNEL_CATEGORY: Record<KernelId, KernelCategory> = {
   'stevenson-arce': 'bi-thread',
   'shiau-fan': 'bi-thread',
   pigeon: 'bi-thread',
+  ostromoukhov: 'bi-thread',
 };
