@@ -9,6 +9,12 @@ import type { Layer, LayeredComposition } from '../engine/layer/types';
 import { makeLayer } from '../engine/layer/generate';
 import { floodSelect, polygonMask, maskToRgba, maskIsEmpty, type Pt } from '../engine/select/select';
 import { traceBinaryMask } from '../engine/trace/trace';
+import {
+  saveProjectState, loadProjectState, saveProjectSource, loadProjectSource, clearProject,
+} from '../engine/project/store';
+import { putSelection, getSelection, listSelectionIds } from '../engine/select/store';
+import { serializeProject, deserializeProject } from '../engine/project/serialize';
+import { rgbaToPngBlob, decodeBlobToRgba } from '../engine/image/codec';
 import type { PipelineParams } from '../engine/pipeline';
 import { defaultAdjust, type AdjustParams } from '../engine/image/adjust';
 import { defaultPreprocess, type PreprocessParams } from '../engine/image/preprocess';
@@ -54,6 +60,7 @@ export function App() {
   const [tolerance, setTolerance] = useState(0.15);
   const [pendingSelection, setPendingSelection] =
     useState<{ mask: Uint8Array; w: number; h: number; outline: Pt[][] } | null>(null);
+  const [restored, setRestored] = useState(false);
 
   const clientRef = useRef<HalftoneClient | null>(null);
   if (!clientRef.current) clientRef.current = new HalftoneClient();
@@ -70,17 +77,34 @@ export function App() {
     }
   }, [client]);
 
-  // Restore state from URL hash on mount
+  // On mount: prefer the autosaved IndexedDB project (full state incl. source +
+  // composition); fall back to the URL-hash single-mode snapshot.
   useEffect(() => {
-    const state = readStateFromHash();
-    if (state) {
-      setAdjust(state.adjust);
-      if (state.preprocess) setPreprocess(state.preprocess);
-      setMode(state.mode);
-      setBackground(state.background);
-      setForeground(state.foreground);
-      setTransparent(state.transparent);
-    }
+    (async () => {
+      try {
+        const [savedState, savedSource] = await Promise.all([loadProjectState(), loadProjectSource()]);
+        if (savedState && savedSource) {
+          const img = await decodeBlobToRgba(savedSource);
+          setSource(img);
+          setFilename(savedState.filename);
+          restoreParams(savedState.params);
+          setRestored(true);
+          return;
+        }
+      } catch {
+        // fall through to hash restore
+      }
+      const state = readStateFromHash();
+      if (state) {
+        setAdjust(state.adjust);
+        if (state.preprocess) setPreprocess(state.preprocess);
+        setMode(state.mode);
+        setBackground(state.background);
+        setForeground(state.foreground);
+        setTransparent(state.transparent);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Spinner shown only if a job has been running > 100ms
@@ -135,6 +159,17 @@ export function App() {
           if (!blob) continue;
           const bitmap = await createImageBitmap(blob);
           await client.setUserMask(meta.id, bitmap);
+        } catch {
+          // ignore
+        }
+      }
+      // Interactive-selection masks referenced by a restored composition.
+      for (const id of listSelectionIds()) {
+        try {
+          const blob = await getSelection(id);
+          if (!blob) continue;
+          const bitmap = await createImageBitmap(blob);
+          await client.setUserMask(id, bitmap);
         } catch {
           // ignore
         }
@@ -220,6 +255,8 @@ export function App() {
     cx.putImageData(id, 0, 0);
     const bitmap = await createImageBitmap(canvas);
     await client.setUserMask(selId, bitmap);
+    // Persist so the selection survives reload (re-hydrated on boot).
+    canvas.toBlob((blob) => { if (blob) void putSelection(selId, blob); }, 'image/png');
     const selLayer = makeLayer({ name: 'Selection', region: { kind: 'selection', selectionId: selId } });
     setComposition((c) => {
       if (!c) {
@@ -267,6 +304,34 @@ export function App() {
     const t = window.setTimeout(() => writeStateToHash(hashState), 400);
     return () => clearTimeout(t);
   }, [params]);
+
+  // Autosave the source image (PNG) whenever it changes — rare, so no debounce.
+  useEffect(() => {
+    if (!source) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const blob = await rgbaToPngBlob(source);
+        if (!cancelled) await saveProjectSource(blob);
+      } catch { /* storage unavailable */ }
+    })();
+    return () => { cancelled = true; };
+  }, [source]);
+
+  // Autosave the project state (params + composition) on every edit, debounced.
+  // Guarded by `source` so a fresh empty session never clobbers a saved project.
+  useEffect(() => {
+    if (!source) return;
+    const selectionIds = composition
+      ? composition.layers
+          .filter((l) => l.region.kind === 'selection')
+          .map((l) => (l.region as { selectionId: string }).selectionId)
+      : [];
+    const t = window.setTimeout(() => {
+      void saveProjectState({ version: 1, filename, params, selectionIds, savedAt: Date.now() });
+    }, 500);
+    return () => clearTimeout(t);
+  }, [params, filename, source, composition]);
 
   // Request a fresh preview whenever params/source/preview-resolution changes; rAF coalesces.
   useEffect(() => {
@@ -371,6 +436,46 @@ export function App() {
     triggerDownload(blob, `${baseName}-halftone.zip`);
   };
 
+  // Save the whole project (source + params + composition + selection masks)
+  // as a portable .json.
+  const onExportProject = async () => {
+    if (!source) return;
+    const selBlobs = new Map<string, Blob>();
+    if (composition) {
+      for (const l of composition.layers) {
+        if (l.region.kind === 'selection') {
+          const b = await getSelection(l.region.selectionId);
+          if (b) selBlobs.set(l.region.selectionId, b);
+        }
+      }
+    }
+    const json = await serializeProject(filename, params, source, selBlobs);
+    triggerDownload(new Blob([json], { type: 'application/json' }), `${baseName}.halftone.json`);
+  };
+
+  const onImportProject = async (file: File) => {
+    try {
+      const proj = await deserializeProject(await file.text());
+      // Register + persist any embedded selection masks before applying state.
+      for (const { id, blob } of proj.selections) {
+        const bitmap = await createImageBitmap(blob);
+        await client.setUserMask(id, bitmap);
+        await putSelection(id, blob);
+      }
+      setSource(proj.source);
+      setFilename(proj.filename);
+      restoreParams(proj.params);
+      setRestored(false);
+    } catch (e) {
+      window.alert(`Could not open project: ${e instanceof Error ? e.message : 'invalid file'}`);
+    }
+  };
+
+  const startFresh = async () => {
+    await clearProject();
+    location.reload();
+  };
+
   // Apply a fully-mapped PipelineParams from the AI recipe validator. The
   // validator has already clamped/validated everything, so we just fan it out
   // into the individual state slices the rest of the app reads.
@@ -388,6 +493,23 @@ export function App() {
   const applyComposition = useCallback((c: LayeredComposition) => {
     setComposition(c);
     setActiveLayerId(c.layers[c.layers.length - 1]?.id ?? null);
+    setActivePresetId(null);
+  }, []);
+
+  // Fan a full PipelineParams (from a saved/imported project) into state slices.
+  const restoreParams = useCallback((p: PipelineParams) => {
+    setAdjust(p.adjust);
+    setPreprocess(p.preprocess ?? defaultPreprocess);
+    setMode(p.mode);
+    setBackground(p.background);
+    setForeground(p.foreground);
+    setTransparent(p.transparent);
+    setTextureOverlay(p.textureOverlay);
+    setMaskOverlay(p.maskOverlay);
+    setSuperSample(p.superSample ?? false);
+    setResampling(p.resampling ?? 'bilinear');
+    setComposition(p.composition ?? null);
+    setActiveLayerId(p.composition?.layers[p.composition.layers.length - 1]?.id ?? null);
     setActivePresetId(null);
   }, []);
 
@@ -476,6 +598,20 @@ export function App() {
                 <span className="val">{source.width} × {source.height}</span>
               </div>
             )}
+            <hr className="divider" />
+            <h3 className="sub-h">Project</h3>
+            <button className="ghost" style={{ width: '100%', marginBottom: 6 }}
+              disabled={!source} onClick={onExportProject}>
+              Save project (.json)
+            </button>
+            <label className="ghost file-label" style={{ width: '100%', textAlign: 'center', display: 'block' }}>
+              Open project (.json)
+              <input type="file" accept="application/json,.json" style={{ display: 'none' }}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) void onImportProject(f); e.currentTarget.value = ''; }} />
+            </label>
+            <p className="hint" style={{ marginTop: 8 }}>
+              Your work autosaves in this browser and restores on reload.
+            </p>
           </>
         );
       case 'layers':
@@ -510,6 +646,14 @@ export function App() {
     <div className="app">
       {dragOver && (
         <div className="drop-overlay"><div className="drop-overlay-inner">Drop image to load</div></div>
+      )}
+
+      {restored && (
+        <div className="restored-banner">
+          <span>Restored your last session.</span>
+          <button onClick={() => setRestored(false)}>Dismiss</button>
+          <button onClick={startFresh}>Start fresh</button>
+        </div>
       )}
 
       <main className="stage">
