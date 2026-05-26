@@ -45,7 +45,10 @@ body { -webkit-font-smoothing: antialiased; font-size: 14px; }
 }
 
 .canvas-viewport { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; user-select: none; }
-.canvas-viewport .canvas-stack { box-shadow: 0 24px 60px -18px rgba(0,0,0,.7); will-change: transform; }
+/* flex: 0 0 auto so a zoomed-in canvas keeps its exact size and overflows the
+   viewport (clipped) instead of being shrunk on the main axis — which would
+   distort the aspect ratio. */
+.canvas-viewport .canvas-stack { box-shadow: 0 24px 60px -18px rgba(0,0,0,.7); will-change: transform; flex: 0 0 auto; }
 .canvas-viewport canvas { pointer-events: none; }
 .canvas-viewport .placeholder { color: var(--faint); font-family: var(--serif); font-size: 16px; font-weight: 400; }
 
