@@ -76,6 +76,18 @@ export const BUILTIN_PRESETS: Preset[] = [
     )),
   },
   {
+    // Screenprint-style: solid black in the shadows, halftone dots through the
+    // mids, knocked out in the highlights. Reaches true solid black like a
+    // dither, but stays vector. (Interpretation A.)
+    id: 'grid-solid-ink',
+    name: 'Solid-ink halftone',
+    category: 'grid',
+    ...std(vector(
+      { kind: 'grid', cellSize: 6, angleDeg: 45 },
+      { kind: 'circle', params: { ...defaultDotParams, solidAt: 0.18, dropAt: 0.9 } },
+    )),
+  },
+  {
     id: 'grid-square',
     name: 'Square mosaic',
     category: 'grid',

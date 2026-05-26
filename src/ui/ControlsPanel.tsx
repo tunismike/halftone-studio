@@ -594,6 +594,10 @@ function MarkControls({ mark, onChange }: { mark: MarkKind; onChange: (m: MarkKi
           onChange={(v) => onChange({ kind: 'circle', params: { ...p, minRatio: v } })} />
         <Slider label="Max dot" value={p.maxRatio} min={0.1} max={1.5} step={0.01}
           onChange={(v) => onChange({ kind: 'circle', params: { ...p, maxRatio: v } })} />
+        <Slider label="Solid below" value={p.solidAt ?? 0} min={0} max={0.5} step={0.01}
+          onChange={(v) => onChange({ kind: 'circle', params: { ...p, solidAt: v } })} />
+        <Slider label="Drop above" value={p.dropAt ?? 1} min={0.5} max={1} step={0.01}
+          onChange={(v) => onChange({ kind: 'circle', params: { ...p, dropAt: v } })} />
         <Slider label="Edge-aware" value={p.edgeAwareStrength ?? 0} min={0} max={1} step={0.01}
           onChange={(v) => onChange({ kind: 'circle', params: { ...p, edgeAwareStrength: v } })} />
         <Slider label="Fixed radius (px)" value={p.fixedRadius ?? 0} min={0} max={20} step={0.05}

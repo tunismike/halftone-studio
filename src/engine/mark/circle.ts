@@ -15,6 +15,13 @@ export interface DotParams {
   // pixels. Size jitter (distress.scale) is intentionally NOT applied, so true
   // stipple dots stay uniform; position jitter and break/skip still apply.
   fixedRadius?: number;
+  // Screenprint-style tonal floor/ceiling (Interpretation A). Tones darker than
+  // `solidAt` (luminance ≤ solidAt) render solid (max dot → fills the cell);
+  // tones lighter than `dropAt` knock out to white (no dot); the band between
+  // is screened into halftone dots across the full size range. Defaults
+  // (0 / 1) reproduce a plain continuous halftone.
+  solidAt?: number;
+  dropAt?: number;
 }
 
 export const defaultDotParams: DotParams = {
@@ -45,11 +52,18 @@ export function samplesToCircles(samples: Sample[], p: DotParams, edges?: LumIma
         const e = sampleBilinear(edges, s.x, s.y);
         cap = cap * (1 - e * ea);
       }
-      // Exact disc-in-cell mapping: dot AREA tracks ink coverage (1 - tone) and
-      // a fully-inked cell fills to the corners (solid black). See dot-coverage.
-      const coverage = Math.max(0, 1 - s.value);
+      // Tonal band: solid below `solidAt`, knocked out above `dropAt`, halftone
+      // dots remapped across the band between (screenprint behaviour).
+      const solidAt = p.solidAt ?? 0;
+      const dropAt = p.dropAt ?? 1;
+      let coverage: number;
+      if (s.value <= solidAt) coverage = 1;            // dark → solid fill
+      else if (s.value >= dropAt) coverage = 0;        // light → knocked out
+      else coverage = (dropAt - s.value) / Math.max(1e-6, dropAt - solidAt);
+      // Exact disc-in-cell mapping: dot AREA tracks coverage; coverage 1 fills
+      // the cell corners (solid black). See dot-coverage.
       const target = radiusRatioForCoverage(coverage) * half * p.gain;
-      r = Math.max(minR, Math.min(cap, target)) * d.scale;
+      r = coverage <= 0 ? 0 : Math.max(minR, Math.min(cap, target)) * d.scale;
     }
     if (r > 0.05) {
       out.push({
