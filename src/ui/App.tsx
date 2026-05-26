@@ -363,17 +363,23 @@ export function App() {
     setVectorPreviewUrl(u);
   }, []);
   useEffect(() => {
-    if (!source || params.composition || params.mode.kind !== 'trace') {
+    const k = params.mode.kind;
+    const vectorMode = k === 'vector' || k === 'cmyk' || k === 'spot' || k === 'rdContour' || k === 'trace';
+    if (!source || params.composition || !vectorMode) {
       setVecUrl(null);
       return;
     }
-    setVecUrl(null); // raster shows while we trace the full-res vectors
+    setVecUrl(null); // raster shows while we (re)build the full-res vectors
     let cancelled = false;
     const t = window.setTimeout(async () => {
       try {
         const xml = await client.serializeSvg(params, { mode: 'editable' });
-        if (!cancelled) setVecUrl(URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml' })));
-      } catch { /* ignore */ }
+        // Guard against pathologically large mark sets (deep zoom would re-raster
+        // them every step); keep the raster preview in that case.
+        if (!cancelled && xml.length <= 12_000_000) {
+          setVecUrl(URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml' })));
+        }
+      } catch { /* non-vector mode or worker busy → keep raster */ }
     }, 250);
     return () => { cancelled = true; clearTimeout(t); };
   }, [params, source, client, setVecUrl]);
