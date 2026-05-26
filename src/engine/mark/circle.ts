@@ -2,6 +2,7 @@ import { sampleBilinear } from '../image/sample';
 import type { LumImage, Sample } from '../image/types';
 import type { CircleMark } from './types';
 import { distressDelta, type DistressParams } from './distress';
+import { radiusRatioForCoverage, SOLID_RATIO } from './dot-coverage';
 
 export interface DotParams {
   gain: number;
@@ -19,7 +20,9 @@ export interface DotParams {
 export const defaultDotParams: DotParams = {
   gain: 1,
   minRatio: 0,
-  maxRatio: 1.05,
+  // √2 so a fully-inked cell's dot can grow to the corners and go solid black
+  // (a dot capped at 1.0 only covers π/4 ≈ 78.5%, leaving white corners).
+  maxRatio: SOLID_RATIO,
 };
 
 export function samplesToCircles(samples: Sample[], p: DotParams, edges?: LumImage): CircleMark[] {
@@ -42,12 +45,10 @@ export function samplesToCircles(samples: Sample[], p: DotParams, edges?: LumIma
         const e = sampleBilinear(edges, s.x, s.y);
         cap = cap * (1 - e * ea);
       }
-      // Dot AREA must be proportional to ink coverage (1 - tone), so radius
-      // scales with sqrt(coverage). Linear radius makes midtones far too light
-      // (area ∝ coverage²). sqrt keeps the endpoints (0 and `half`) anchored and
-      // correctly darkens the mid-range.
+      // Exact disc-in-cell mapping: dot AREA tracks ink coverage (1 - tone) and
+      // a fully-inked cell fills to the corners (solid black). See dot-coverage.
       const coverage = Math.max(0, 1 - s.value);
-      const target = Math.sqrt(coverage) * half * p.gain;
+      const target = radiusRatioForCoverage(coverage) * half * p.gain;
       r = Math.max(minR, Math.min(cap, target)) * d.scale;
     }
     if (r > 0.05) {

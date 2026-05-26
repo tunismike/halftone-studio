@@ -3,6 +3,7 @@ import type { LumImage, Sample } from '../image/types';
 import { hash2 } from '../noise/hash';
 import type { PolyMark } from './types';
 import { distressDelta, type DistressParams } from './distress';
+import { radiusRatioForCoverage, SOLID_RATIO } from './dot-coverage';
 
 export interface BlobParams {
   gain: number;
@@ -18,7 +19,7 @@ export interface BlobParams {
 export const defaultBlobParams: BlobParams = {
   gain: 1,
   minRatio: 0,
-  maxRatio: 1,
+  maxRatio: SOLID_RATIO, // reach the cell corners → solid at full ink
   jitter: 0.35,
   vertices: 9,
   seed: 1,
@@ -38,9 +39,8 @@ export function samplesToBlobs(samples: Sample[], p: BlobParams, edges?: LumImag
       const e = sampleBilinear(edges, s.x, s.y);
       cap = cap * (1 - e * ea);
     }
-    // Area-correct: radius ∝ sqrt(coverage) so blob area is linear in ink
-    // coverage (linear radius makes midtones too light).
-    const target = Math.sqrt(Math.max(0, 1 - s.value)) * half * p.gain;
+    // Exact disc-in-cell coverage mapping (area tracks tone, fills to solid).
+    const target = radiusRatioForCoverage(Math.max(0, 1 - s.value)) * half * p.gain;
     let r = Math.max(p.minRatio * half, Math.min(cap, target));
     r *= d.scale;
     if (r < 0.1) continue;
