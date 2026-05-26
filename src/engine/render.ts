@@ -5,6 +5,49 @@ import { hexToRgb } from './color/srgb';
 
 type AnyCanvas = HTMLCanvasElement | OffscreenCanvas;
 
+// Above this many circles, a single Path2D arc fill gets slow (seconds). The
+// raster disc-stamper below is O(total dot area) ≈ O(pixels) and renders the
+// SAME discs, so the preview stays representative of the exported SVG circles.
+const STAMP_THRESHOLD = 20_000;
+const HEX_RE = /^#?[0-9a-fA-F]{6}$/;
+
+// Rasterize filled, anti-aliased discs directly into the canvas pixels. Blends
+// ink over the existing content by edge coverage (1px AA band), matching how a
+// browser fills an SVG <circle> of the same cx/cy/r. O(Σ disc area).
+function stampDiscsToCanvas(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  w: number, h: number, circles: Array<{ cx: number; cy: number; r: number }>, fill: string,
+): boolean {
+  if (!HEX_RE.test(fill.trim())) return false; // non-hex → caller uses Path2D
+  const rgb = hexToRgb(fill);
+  const ir = Math.round(rgb.r * 255), ig = Math.round(rgb.g * 255), ib = Math.round(rgb.b * 255);
+  const id = ctx.getImageData(0, 0, w, h);
+  const data = id.data;
+  for (const c of circles) {
+    const r = c.r;
+    const x0 = Math.max(0, Math.floor(c.cx - r - 1));
+    const x1 = Math.min(w - 1, Math.ceil(c.cx + r + 1));
+    const y0 = Math.max(0, Math.floor(c.cy - r - 1));
+    const y1 = Math.min(h - 1, Math.ceil(c.cy + r + 1));
+    for (let y = y0; y <= y1; y++) {
+      const dy = y + 0.5 - c.cy;
+      let row = (y * w + x0) * 4;
+      for (let x = x0; x <= x1; x++, row += 4) {
+        const dx = x + 0.5 - c.cx;
+        const cov = r + 0.5 - Math.sqrt(dx * dx + dy * dy);
+        if (cov <= 0) continue;
+        const a = cov >= 1 ? 1 : cov;
+        data[row] = data[row] + (ir - data[row]) * a;
+        data[row + 1] = data[row + 1] + (ig - data[row + 1]) * a;
+        data[row + 2] = data[row + 2] + (ib - data[row + 2]) * a;
+        data[row + 3] = 255;
+      }
+    }
+  }
+  ctx.putImageData(id, 0, 0);
+  return true;
+}
+
 export function renderTracedToCanvas(
   regions: TracedRegion[], width: number, height: number,
   background: string, transparent: boolean, canvas: AnyCanvas,
@@ -130,13 +173,20 @@ export function renderMarkSetToCanvas(set: MarkSet, canvas: AnyCanvas): void {
     }
 
     if (circles.length) {
-      const path = new Path2D();
-      for (const c of circles) {
-        path.moveTo(c.cx + c.r, c.cy);
-        path.arc(c.cx, c.cy, c.r, 0, Math.PI * 2);
+      // Fast raster path for dense, fill-only, source-over circle groups (the
+      // halftone case). Falls back to Path2D for strokes / multiply / non-hex.
+      const stamped = doFill && !doStroke && g.blendMode !== 'multiply'
+        && circles.length > STAMP_THRESHOLD
+        && stampDiscsToCanvas(ctx, set.width, set.height, circles, fill);
+      if (!stamped) {
+        const path = new Path2D();
+        for (const c of circles) {
+          path.moveTo(c.cx + c.r, c.cy);
+          path.arc(c.cx, c.cy, c.r, 0, Math.PI * 2);
+        }
+        if (doFill) ctx.fill(path);
+        if (doStroke) ctx.stroke(path);
       }
-      if (doFill) ctx.fill(path);
-      if (doStroke) ctx.stroke(path);
     }
 
     if (polys.length) {

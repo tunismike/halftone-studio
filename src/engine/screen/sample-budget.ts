@@ -1,17 +1,16 @@
-// Shared safety net for screen generators. A sub-2px cell on a multi-
-// megapixel image yields millions of marks, which freezes the single
-// Path2D fill in the renderer. clampCell raises the effective cell size
-// so the emitted sample count stays under MAX_SAMPLES regardless of how
-// small a cellSize the DPI helper / slider / preset / URL asks for.
+// Shared safety net for screen generators. clampCell raises the effective cell
+// size so the emitted sample (dot) count stays under MAX_SAMPLES, however small
+// a cellSize the DPI helper / slider / preset / URL asks for.
+//
+// The renderer now stamps dense circle groups as anti-aliased raster discs
+// (render.ts), which is O(total dot area) ≈ O(pixels) instead of O(dots) — so
+// the ceiling is no longer the render freeze, but keeping the exported SVG
+// usable (this cap ≈ a ~24 MB SVG). The preview renders the SAME dot set, so it
+// stays representative of the SVG.
+export const MAX_SAMPLES = 400_000;
 
-export const MAX_SAMPLES = 120_000;
-
-// Stipple shares the default budget. The cell count bounds CANDIDATE cells, but
-// emitted dots scale with image darkness — a dark region at a high cell budget
-// can emit nearly that many circles, and rendering 400k+ arcs in one Path2D
-// fill stalls the worker (the white-page bug). 120k worst-case dots renders
-// reliably. Genuinely higher-density stipple needs a raster dot path in the
-// preview instead of vector arcs — a separate change.
+// Stipple shares the budget; the raster disc-stamper handles dense dark regions
+// without the old Path2D stall.
 export const MAX_SAMPLES_STIPPLE = MAX_SAMPLES;
 
 export function clampCell(

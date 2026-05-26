@@ -375,7 +375,7 @@ export function App() {
     const show = (xml: string) => {
       // Guard against pathologically large output (deep zoom would re-raster it
       // every step); keep the raster preview in that case.
-      if (!cancelled && xml.length <= 12_000_000) {
+      if (!cancelled && xml.length <= 28_000_000) {
         setVecUrl(URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml' })));
       }
     };
