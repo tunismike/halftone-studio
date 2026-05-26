@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#161513"/>
+  <!-- halftone gradient: dots shrink left-to-right -->
+  <g fill="#e9663f">
+    <circle cx="120" cy="140" r="44"/>
+    <circle cx="248" cy="140" r="34"/>
+    <circle cx="368" cy="140" r="22"/>
+    <circle cx="120" cy="268" r="36"/>
+    <circle cx="248" cy="268" r="26"/>
+    <circle cx="368" cy="268" r="15"/>
+    <circle cx="120" cy="392" r="26"/>
+    <circle cx="248" cy="392" r="16"/>
+    <circle cx="368" cy="392" r="9"/>
+  </g>
+  <circle cx="400" cy="392" r="6" fill="#f2efe9"/>
+</svg>
