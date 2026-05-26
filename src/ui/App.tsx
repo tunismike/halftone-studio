@@ -10,6 +10,8 @@ import { makeLayer } from '../engine/layer/generate';
 import { floodSelect, polygonMask, maskToRgba, maskIsEmpty, type Pt } from '../engine/select/select';
 import { traceBinaryMask } from '../engine/trace/trace';
 import { potraceToSvg } from '../engine/trace/potrace';
+import { lineMask } from '../engine/image/line-mask';
+import { defaultTraceMode } from '../engine/pipeline';
 import {
   saveProjectState, loadProjectState, saveProjectSource, loadProjectSource, clearProject,
 } from '../engine/project/store';
@@ -541,6 +543,42 @@ export function App() {
     location.reload();
   };
 
+  // Auto "Lines + halftone": keep edges/lines crisp (traced solid) and halftone
+  // only the smooth gradients. Builds a 2-layer composition off an edge mask.
+  const buildLinesHalftone = useCallback(async () => {
+    if (!source) return;
+    const w = source.width, h = source.height;
+    const mask = lineMask(source);
+    if (maskIsEmpty(mask)) { window.alert('No strong edges found to keep as lines.'); return; }
+    const maskId = `line-${Date.now().toString(36)}`;
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const cx = canvas.getContext('2d');
+    if (!cx) return;
+    const id = cx.createImageData(w, h);
+    id.data.set(maskToRgba(mask, w, h));
+    cx.putImageData(id, 0, 0);
+    const bitmap = await createImageBitmap(canvas);
+    await client.setUserMask(maskId, bitmap);
+    canvas.toBlob((b) => { if (b) void putSelection(maskId, b); }, 'image/png');
+
+    // Bottom: halftone the smooth areas (edge region inverted).
+    const halftone = makeLayer({ name: 'Halftone shading', region: { kind: 'mask', maskId }, foreground: '#000000' });
+    halftone.invertRegion = true;
+    halftone.feather = 0;
+    // Top: traced solid lines, clipped to the edge region (2-colour = clean ink).
+    const lines = makeLayer({ name: 'Lines', region: { kind: 'mask', maskId }, foreground: '#000000' });
+    const tm = defaultTraceMode();
+    if (tm.kind === 'trace') tm.trace.colors = 2;
+    lines.treatment.mode = tm;
+    lines.feather = 0;
+
+    const comp: LayeredComposition = { layers: [halftone, lines], background: '#ffffff', transparent: false };
+    setComposition(comp);
+    setActiveLayerId(lines.id);
+    setActivePresetId(null);
+  }, [source, client]);
+
   // Apply a fully-mapped PipelineParams from the AI recipe validator. The
   // validator has already clamped/validated everything, so we just fan it out
   // into the individual state slices the rest of the app reads.
@@ -745,6 +783,7 @@ export function App() {
             hasPendingSelection={!!pendingSelection}
             onMakeLayerFromSelection={makeLayerFromSelection}
             onClearSelection={clearSelection}
+            onLinesHalftone={buildLinesHalftone}
           />
         );
       case 'recipe':

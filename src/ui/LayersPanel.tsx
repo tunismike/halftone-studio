@@ -25,12 +25,14 @@ interface Props {
   hasPendingSelection: boolean;
   onMakeLayerFromSelection: () => void;
   onClearSelection: () => void;
+  onLinesHalftone: () => void;
 }
 
 export function LayersPanel({
   source, composition, setComposition, activeLayerId, setActiveLayerId,
   selectTool, setSelectTool, tolerance, setTolerance,
   hasPendingSelection, onMakeLayerFromSelection, onClearSelection,
+  onLinesHalftone,
 }: Props) {
   const [kind, setKind] = useState<'tone' | 'color'>('color');
   const [count, setCount] = useState(4);
@@ -106,6 +108,13 @@ export function LayersPanel({
         <button className="btn" style={{ width: '100%', marginTop: 6 }}
           disabled={!source} onClick={generate}>
           Generate {count} layers
+        </button>
+        <hr className="divider" />
+        <h3 className="sub-h">Lines + halftone</h3>
+        <p className="hint">Keeps edges/outlines crisp solid and halftones only the smooth gradients.</p>
+        <button className="btn" style={{ width: '100%', marginBottom: 6 }}
+          disabled={!source} onClick={onLinesHalftone}>
+          Split lines + halftone (auto)
         </button>
         <hr className="divider" />
         <h3 className="sub-h">Demo compositions</h3>
