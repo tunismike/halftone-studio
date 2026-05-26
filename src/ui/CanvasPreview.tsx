@@ -14,6 +14,9 @@ interface Props {
   onWandPick?: (sx: number, sy: number) => void;
   onPolygonSelect?: (pts: Pt[]) => void;
   pendingOutline?: Pt[][] | null; // source-space loops → marching ants
+  // Crisp vector preview (e.g. Vector trace). When set, shown over the raster
+  // canvas so zooming stays sharp; null during (re)compute → raster shows.
+  overlaySvgUrl?: string | null;
 }
 
 interface View {
@@ -31,6 +34,7 @@ export const CanvasPreview = forwardRef<HTMLCanvasElement, Props>(function Canva
   {
     hasSource, isRaster, sourceWidth, onSourceZoomChange, onUserZoom,
     selectTool = null, onWandPick, onPolygonSelect, pendingOutline = null,
+    overlaySvgUrl = null,
   },
   ref,
 ) {
@@ -347,6 +351,18 @@ export const CanvasPreview = forwardRef<HTMLCanvasElement, Props>(function Canva
             imageRendering,
           }}
         />
+        {overlaySvgUrl && (
+          <img
+            src={overlaySvgUrl}
+            alt=""
+            draggable={false}
+            style={{
+              position: 'absolute', inset: 0,
+              width: '100%', height: '100%',
+              pointerEvents: 'none', userSelect: 'none',
+            }}
+          />
+        )}
         <canvas
           ref={overlayRef}
           className="select-overlay"

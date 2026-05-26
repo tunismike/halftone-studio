@@ -61,6 +61,9 @@ export function App() {
   const [pendingSelection, setPendingSelection] =
     useState<{ mask: Uint8Array; w: number; h: number; outline: Pt[][] } | null>(null);
   const [restored, setRestored] = useState(false);
+  // Crisp vector preview for Vector-trace mode (full-res, matches SVG export).
+  const [vectorPreviewUrl, setVectorPreviewUrl] = useState<string | null>(null);
+  const vecUrlRef = useRef<string | null>(null);
   // Undo/redo of the document (= params, which includes composition). Snapshots
   // are committed when the user goes idle, so one gesture = one step.
   const historyRef = useRef<{ stack: PipelineParams[]; index: number }>({ stack: [], index: -1 });
@@ -350,6 +353,30 @@ export function App() {
     });
     return () => { cancelled = true; cancelAnimationFrame(raf); };
   }, [source, params, previewMaxSide, client]);
+
+  // Vector-trace preview: show the real (full-res) SVG while working, and only
+  // the raster canvas while it recomputes. Swaps the crisp vectors in 250ms
+  // after edits settle. Revokes the previous blob URL when replacing it.
+  const setVecUrl = useCallback((u: string | null) => {
+    if (vecUrlRef.current && vecUrlRef.current !== u) URL.revokeObjectURL(vecUrlRef.current);
+    vecUrlRef.current = u;
+    setVectorPreviewUrl(u);
+  }, []);
+  useEffect(() => {
+    if (!source || params.composition || params.mode.kind !== 'trace') {
+      setVecUrl(null);
+      return;
+    }
+    setVecUrl(null); // raster shows while we trace the full-res vectors
+    let cancelled = false;
+    const t = window.setTimeout(async () => {
+      try {
+        const xml = await client.serializeSvg(params, { mode: 'editable' });
+        if (!cancelled) setVecUrl(URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml' })));
+      } catch { /* ignore */ }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [params, source, client, setVecUrl]);
 
   const onImage = useCallback((img: RgbaImage, name: string) => {
     setSource(img);
@@ -729,6 +756,7 @@ export function App() {
           onWandPick={onWandPick}
           onPolygonSelect={onPolygonSelect}
           pendingOutline={pendingSelection?.outline ?? null}
+          overlaySvgUrl={vectorPreviewUrl}
         />
       </main>
 
