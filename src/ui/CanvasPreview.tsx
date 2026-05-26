@@ -82,42 +82,37 @@ export const CanvasPreview = forwardRef<HTMLCanvasElement, Props>(function Canva
     return () => cancelAnimationFrame(raf);
   }, [hasSource, canvasIntrinsic.w, canvasIntrinsic.h]);
 
-  // Compute the effective zoom (resolves FIT -> actual multiplier) and recenter.
-  useLayoutEffect(() => {
-    if (!canvasIntrinsic.w || !viewportSize.w) return;
-    let z = view.zoom;
-    if (z === FIT) {
-      z = Math.min(
-        viewportSize.w / canvasIntrinsic.w,
-        viewportSize.h / canvasIntrinsic.h,
-      );
-    }
-    setDisplayZoom(z);
-  }, [view.zoom, canvasIntrinsic, viewportSize]);
-
-  // Handle two distinct cases:
-  // (a) source changed (new upload) → reset zoom + pan to fit
-  // (b) preview resolution swapped under us → keep visual size stable by
-  //     rescaling displayZoom inversely to the intrinsic change
+  // Resolve zoom → displayZoom and handle two cases, all in ONE pre-paint
+  // (layout) effect so a preview-resolution swap never paints a frame with the
+  // new intrinsic size paired with the old zoom (which caused a visible jump):
+  //   (a) source changed → reset zoom + pan to fit
+  //   (b) preview resolution swapped → rescale zoom inversely to keep the
+  //       on-screen size stable, and derive displayZoom from the rescaled value
+  //       in the same pass.
   const lastSrcWidth = useRef(0);
   const lastIntrinsic = useRef(0);
-  useEffect(() => {
-    if (!canvasIntrinsic.w) return;
+  useLayoutEffect(() => {
+    if (!canvasIntrinsic.w || !viewportSize.w) return;
+    let effZoom = view.zoom;
     if (lastSrcWidth.current !== sourceWidth) {
       lastSrcWidth.current = sourceWidth;
       lastIntrinsic.current = canvasIntrinsic.w;
+      effZoom = FIT;
       setView({ zoom: FIT, panX: 0, panY: 0 });
-      return;
-    }
-    if (lastIntrinsic.current !== canvasIntrinsic.w) {
+    } else if (lastIntrinsic.current !== canvasIntrinsic.w) {
       const ratio = lastIntrinsic.current / canvasIntrinsic.w;
       lastIntrinsic.current = canvasIntrinsic.w;
-      setView((v) => {
-        if (v.zoom === FIT) return v;
-        return { ...v, zoom: v.zoom * ratio };
-      });
+      if (view.zoom !== FIT) {
+        effZoom = view.zoom * ratio;
+        setView((v) => (v.zoom === FIT ? v : { ...v, zoom: v.zoom * ratio }));
+      }
     }
-  }, [canvasIntrinsic.w, sourceWidth]);
+    let z = effZoom;
+    if (z === FIT) {
+      z = Math.min(viewportSize.w / canvasIntrinsic.w, viewportSize.h / canvasIntrinsic.h);
+    }
+    setDisplayZoom(z);
+  }, [view.zoom, canvasIntrinsic, viewportSize, sourceWidth]);
 
   const previewScale = sourceWidth > 0 && canvasIntrinsic.w > 0
     ? canvasIntrinsic.w / sourceWidth

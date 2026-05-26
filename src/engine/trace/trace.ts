@@ -17,6 +17,7 @@ export interface TraceOptions {
   simplify: number;   // Douglas-Peucker tolerance in px (0 = none)
   smoothing: number;  // 0 = polygons, >0 = Catmull-Rom bézier tension
   minArea: number;    // drop loops smaller than this (px²) — despeckle
+  mono?: boolean;     // render every region as black ink (ignore source colour)
 }
 
 export const defaultTraceOptions: TraceOptions = {
@@ -135,7 +136,7 @@ export function traceImage(src: RgbaImage, opts: TraceOptions): TracedRegion[] {
       .map((lp) => douglasPeucker(lp, opts.simplify));
     if (!loops.length) continue;
     const d = loops.map((lp) => loopToPathD(lp, opts.smoothing)).join(' ');
-    out.push({ color: colors[idx] ?? '#000000', d, loops: loops.length });
+    out.push({ color: opts.mono ? '#000000' : (colors[idx] ?? '#000000'), d, loops: loops.length });
   }
   return out;
 }

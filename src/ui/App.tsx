@@ -569,7 +569,7 @@ export function App() {
     // Top: traced solid lines, clipped to the edge region (2-colour = clean ink).
     const lines = makeLayer({ name: 'Lines', region: { kind: 'mask', maskId }, foreground: '#000000' });
     const tm = defaultTraceMode();
-    if (tm.kind === 'trace') tm.trace.colors = 2;
+    if (tm.kind === 'trace') { tm.trace.colors = 2; tm.trace.mono = true; } // black ink, not source hues
     lines.treatment.mode = tm;
     lines.feather = 0;
 
