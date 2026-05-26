@@ -61,6 +61,12 @@ export function App() {
   const [pendingSelection, setPendingSelection] =
     useState<{ mask: Uint8Array; w: number; h: number; outline: Pt[][] } | null>(null);
   const [restored, setRestored] = useState(false);
+  // Undo/redo of the document (= params, which includes composition). Snapshots
+  // are committed when the user goes idle, so one gesture = one step.
+  const historyRef = useRef<{ stack: PipelineParams[]; index: number }>({ stack: [], index: -1 });
+  const applyingHistory = useRef(false);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
 
   const clientRef = useRef<HalftoneClient | null>(null);
   if (!clientRef.current) clientRef.current = new HalftoneClient();
@@ -513,6 +519,61 @@ export function App() {
     setActivePresetId(null);
   }, []);
 
+  // New source = new document → reset the undo history.
+  useEffect(() => {
+    historyRef.current = { stack: [], index: -1 };
+    setCanUndo(false);
+    setCanRedo(false);
+  }, [source]);
+
+  // Commit a history snapshot once the user settles (idle). Coalesces a drag
+  // into one entry; skips the change that an undo/redo itself produced.
+  useEffect(() => {
+    if (!idle || !source) return;
+    if (applyingHistory.current) { applyingHistory.current = false; return; }
+    const h = historyRef.current;
+    const cur = h.stack[h.index];
+    if (cur && JSON.stringify(cur) === JSON.stringify(params)) return;
+    h.stack = h.stack.slice(0, h.index + 1);
+    h.stack.push(params);
+    if (h.stack.length > 50) h.stack.shift();
+    h.index = h.stack.length - 1;
+    setCanUndo(h.index > 0);
+    setCanRedo(false);
+  }, [idle, params, source]);
+
+  const undo = useCallback(() => {
+    const h = historyRef.current;
+    if (h.index <= 0) return;
+    h.index -= 1;
+    applyingHistory.current = true;
+    restoreParams(h.stack[h.index]);
+    setCanUndo(h.index > 0);
+    setCanRedo(true);
+  }, [restoreParams]);
+
+  const redo = useCallback(() => {
+    const h = historyRef.current;
+    if (h.index >= h.stack.length - 1) return;
+    h.index += 1;
+    applyingHistory.current = true;
+    restoreParams(h.stack[h.index]);
+    setCanUndo(true);
+    setCanRedo(h.index < h.stack.length - 1);
+  }, [restoreParams]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z') return;
+      const t = e.target as HTMLElement;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      e.preventDefault();
+      if (e.shiftKey) redo(); else undo();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, redo]);
+
   const applyPresetState = (state: PresetState, presetId: string) => {
     setAdjust(state.adjust);
     setPreprocess(state.preprocess ?? defaultPreprocess);
@@ -676,6 +737,8 @@ export function App() {
         <div className="actions">
           {busy && <span className="spinner" title="rendering…" />}
           {lastDurationMs !== null && !busy && <span className="duration">{lastDurationMs.toFixed(0)}ms</span>}
+          <button className="ghost icon" disabled={!canUndo} onClick={undo} title="Undo (Cmd/Ctrl+Z)">↶</button>
+          <button className="ghost icon" disabled={!canRedo} onClick={redo} title="Redo (Cmd/Ctrl+Shift+Z)">↷</button>
           <select className="header-select" value={svgMode} onChange={(e) => setSvgMode(e.target.value as SvgMode)}>
             <option value="editable">SVG: editable</option>
             <option value="compact">SVG: compact</option>

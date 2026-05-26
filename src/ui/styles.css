@@ -158,6 +158,9 @@ button.ghost:disabled { opacity: .35; cursor: not-allowed; }
 
 .file-label { cursor: pointer; }
 
+button.ghost.icon { padding: 6px 9px; font-size: 14px; line-height: 1; }
+button.ghost.icon:disabled { opacity: 0.35; cursor: default; }
+
 .restored-banner {
   position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 50;
   display: flex; align-items: center; gap: 12px;
