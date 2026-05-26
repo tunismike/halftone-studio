@@ -34,6 +34,43 @@ describe('valid recipe maps correctly', () => {
   });
 });
 
+describe('multi-layer recipe maps to a composition (Tier 2)', () => {
+  const multi = JSON.stringify({
+    recipeVersion: RECIPE_VERSION,
+    intent: 'screen-print',
+    sourceTreatment: 'analysis-only',
+    layers: [
+      {
+        id: 'bg', name: 'Background', role: 'halftone-plate', enabled: true,
+        region: { kind: 'whole' }, blend: 'normal',
+        params: { mode: { mode: 'vector-halftone', screen: 'grid', mark: 'circle', cellSize: 8, angleDeg: 45 } },
+      },
+      {
+        id: 'sub', name: 'Subject', role: 'silhouette', enabled: true,
+        region: { kind: 'tone', min: 0, max: 0.4 }, blend: 'multiply', opacity: 0.9,
+        params: { mode: { mode: 'duotone', shadow: '#102030', highlight: '#f0e0d0' } },
+      },
+    ],
+  });
+
+  it('produces a 2-layer composition with mapped regions/blends', () => {
+    const r = validateAndMapRecipe(multi, 'screen-print');
+    expect(r.report.fallbackUsed).toBe(false);
+    expect(r.composition).toBeTruthy();
+    expect(r.composition!.layers).toHaveLength(2);
+    expect(r.composition!.layers[0].region).toEqual({ kind: 'all' });
+    expect(r.composition!.layers[1].region).toEqual({ kind: 'toneBand', min: 0, max: 0.4 });
+    expect(r.composition!.layers[1].blend).toBe('multiply');
+    expect(r.composition!.layers[1].opacity).toBeCloseTo(0.9);
+    expect(r.report.mode).toContain('composition');
+  });
+
+  it('single-layer recipe stays single-mode (no composition)', () => {
+    const r = validateAndMapRecipe(validVectorRecipe, 'halftone-poster');
+    expect(r.composition).toBeUndefined();
+  });
+});
+
 describe('invalid JSON never crashes and falls back', () => {
   it('non-JSON → fallback', () => {
     const r = validateAndMapRecipe('not json {{{', 'sticker');

@@ -43,6 +43,18 @@ OPTIONAL in params:
   background, foreground: "#rrggbb"
   transparent: bool
 
+MULTI-LAYER (optional): to MIX treatments, emit several enabled layers. Each layer
+may add, alongside its params:
+  "region": one of
+     {"kind":"whole"}
+     {"kind":"tone","min":0..1,"max":0..1}            (luminance window; dark subject ≈ min 0, max 0.4)
+     {"kind":"color","count":2..12,"index":0..count-1} (quantize to N colours, target one)
+  "blend": "normal|multiply|screen|darken|lighten"     (multiply ≈ overprinted inks)
+  "opacity": 0..1
+Layers paint bottom-to-top (first = bottom). Examples: a grid-halftone "whole" base plus a
+tonal/duotone layer on a dark tone band for a poster; or three multiply tone-band plates for
+a screen-print. Omit these fields for a single full-image layer (Tier 1).
+
 RULES:
   - Match the mode to BOTH the intent and what you see. High-detail faces → stipple
     or fine palette-dither. Bold graphics/logos → tonal bands or grid halftone.

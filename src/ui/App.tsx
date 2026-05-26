@@ -384,6 +384,13 @@ export function App() {
     setActivePresetId(null);
   }, []);
 
+  // Apply a layered composition (from a multi-layer AI recipe or a demo preset).
+  const applyComposition = useCallback((c: LayeredComposition) => {
+    setComposition(c);
+    setActiveLayerId(c.layers[c.layers.length - 1]?.id ?? null);
+    setActivePresetId(null);
+  }, []);
+
   const applyPresetState = (state: PresetState, presetId: string) => {
     setAdjust(state.adjust);
     setPreprocess(state.preprocess ?? defaultPreprocess);
@@ -485,7 +492,7 @@ export function App() {
           />
         );
       case 'recipe':
-        return <AiRecipePanel source={source} applyParams={applyPipelineParams} />;
+        return <AiRecipePanel source={source} applyParams={applyPipelineParams} applyComposition={applyComposition} />;
       case 'presets':
         return (
           <PresetGallery

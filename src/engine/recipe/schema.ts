@@ -9,7 +9,7 @@
 import { z } from 'zod';
 import {
   INTENTS, LAYER_ROLES, SOURCE_TREATMENTS,
-  RECIPE_SCREENS, RECIPE_MARKS, RECIPE_DITHER_ALGOS,
+  RECIPE_SCREENS, RECIPE_MARKS, RECIPE_DITHER_ALGOS, RECIPE_BLENDS,
 } from './types';
 
 const hex = z.string(); // shape-validated + normalized in the mapper
@@ -70,12 +70,21 @@ const layerParams = z.object({
   transparent: z.boolean().optional(),
 }).strict();
 
+const region = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('whole') }).strict(),
+  z.object({ kind: z.literal('tone'), min: z.number(), max: z.number() }).strict(),
+  z.object({ kind: z.literal('color'), count: z.number(), index: z.number() }).strict(),
+]);
+
 const layer = z.object({
   id: z.string(),
   name: z.string(),
   role: z.enum(LAYER_ROLES),
   enabled: z.boolean(),
   params: layerParams,
+  region: region.optional(),
+  blend: z.enum(RECIPE_BLENDS).optional(),
+  opacity: z.number().optional(),
 }).strict();
 
 export const traceRecipeSchema = z.object({

@@ -13,7 +13,8 @@
 
 import { traceRecipeSchema } from './schema';
 import { defaultRecipeForIntent } from './intents';
-import type { Intent, RecipeLayer, RecipeReport, TraceRecipe } from './types';
+import type { Intent, RecipeLayer, RecipeRegion, RecipeReport, TraceRecipe } from './types';
+import type { Layer, LayerBlend, LayerRegion, LayeredComposition } from '../layer/types';
 import {
   defaultGridScreen, defaultHexScreen, defaultRadialScreen, defaultPoissonScreen,
   defaultStippleScreen, defaultSpotMode, defaultTonalRamp, makeMark,
@@ -30,6 +31,9 @@ import type { RgbaImage } from '../image/types';
 export interface MappedRecipe {
   recipe: TraceRecipe;
   params: PipelineParams;
+  // Present when the recipe has more than one enabled layer: a layered
+  // composition the renderer can composite directly.
+  composition?: LayeredComposition;
   report: RecipeReport;
 }
 
@@ -190,6 +194,48 @@ function firstEnabledLayer(recipe: TraceRecipe): RecipeLayer | null {
   return recipe.layers.find((l) => l.enabled) ?? recipe.layers[0] ?? null;
 }
 
+function mapRegion(r: RecipeRegion | undefined, ctx: Ctx): LayerRegion {
+  if (!r || r.kind === 'whole') return { kind: 'all' };
+  if (r.kind === 'tone') {
+    const min = clampNum(r.min, 0, 1, 'region.min', ctx, 0);
+    const max = clampNum(r.max, 0, 1, 'region.max', ctx, 1);
+    return { kind: 'toneBand', min: Math.min(min, max), max: Math.max(min, max) };
+  }
+  const count = Math.round(clampNum(r.count, 2, 12, 'region.count', ctx, 4));
+  const index = Math.round(clampNum(r.index, 0, count - 1, 'region.index', ctx, 0));
+  return { kind: 'colorRegion', count, index };
+}
+
+const BLENDS: LayerBlend[] = ['normal', 'multiply', 'screen', 'darken', 'lighten'];
+function mapBlend(b: string | undefined): LayerBlend {
+  return BLENDS.includes(b as LayerBlend) ? (b as LayerBlend) : 'normal';
+}
+
+// Map every enabled recipe layer to a composition layer (Tier 2). Draw order
+// follows the recipe's layer array (first = bottom).
+export function mapRecipeToComposition(
+  recipe: TraceRecipe, source?: RgbaImage,
+): { composition: LayeredComposition; warnings: string[]; clamped: string[] } {
+  const ctx: Ctx = { warnings: [], clamped: [], source };
+  const enabled = recipe.layers.filter((l) => l.enabled);
+  const layers: Layer[] = enabled.map((rl, i) => {
+    const p = mapLayerToParams(rl, recipe.intent, ctx);
+    return {
+      id: rl.id || `recipe-${i}`,
+      name: rl.name || `Layer ${i + 1}`,
+      region: mapRegion(rl.region, ctx),
+      invertRegion: false,
+      treatment: { mode: p.mode, adjust: p.adjust, preprocess: p.preprocess, foreground: p.foreground },
+      enabled: true,
+      blend: mapBlend(rl.blend),
+      opacity: clampNum(rl.opacity, 0, 1, 'opacity', ctx, 1),
+      feather: 0.03,
+    };
+  });
+  const background = normHex(enabled[0]?.params.background ?? '#ffffff', 'background', ctx, '#ffffff');
+  return { composition: { layers, background, transparent: false }, warnings: ctx.warnings, clamped: ctx.clamped };
+}
+
 // Map an already-validated TraceRecipe to params (used for fallbacks/defaults).
 export function mapRecipe(recipe: TraceRecipe, source?: RgbaImage): { params: PipelineParams; warnings: string[]; clamped: string[] } {
   const ctx: Ctx = { warnings: [], clamped: [], source };
@@ -245,10 +291,21 @@ export function validateAndMapRecipe(
   if (intent !== selectedIntent) {
     ctx.warnings.push(`Recipe intent "${intent}" differs from selected "${selectedIntent}".`);
   }
+
+  // Tier 2: more than one enabled layer → a layered composition.
+  const enabledCount = recipe.layers.filter((l) => l.enabled).length;
+  let composition: LayeredComposition | undefined;
+  if (enabledCount > 1) {
+    const c = mapRecipeToComposition(recipe, source);
+    composition = c.composition;
+    ctx.warnings.push(...c.warnings);
+    ctx.clamped.push(...c.clamped);
+  }
+
   return {
-    recipe, params,
+    recipe, params, composition,
     report: {
-      intent, mode: layer.params.mode.mode,
+      intent, mode: composition ? `composition (${enabledCount} layers)` : layer.params.mode.mode,
       warnings: ctx.warnings, clampedFields: ctx.clamped,
       fallbackUsed: false, parseOk: true,
     },

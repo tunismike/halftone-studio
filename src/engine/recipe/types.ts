@@ -95,12 +95,27 @@ export interface RecipeLayerParams {
   transparent?: boolean;
 }
 
+// Where a multi-layer recipe layer applies. Maps to the engine LayerRegion.
+// Kept small + image-agnostic (tone bands / colour regions need no
+// segmentation), so a recipe renders on any source.
+export type RecipeRegion =
+  | { kind: 'whole' }
+  | { kind: 'tone'; min: number; max: number }   // luminance window 0..1
+  | { kind: 'color'; count: number; index: number };
+
+export const RECIPE_BLENDS = ['normal', 'multiply', 'screen', 'darken', 'lighten'] as const;
+export type RecipeBlend = (typeof RECIPE_BLENDS)[number];
+
 export interface RecipeLayer {
   id: string;
   name: string;
   role: LayerRole;
   enabled: boolean;
   params: RecipeLayerParams;
+  // Tier 2 multi-layer fields. Absent → whole-image / normal / opaque (Tier 1).
+  region?: RecipeRegion;
+  blend?: RecipeBlend;
+  opacity?: number;
 }
 
 export interface TraceRecipe {

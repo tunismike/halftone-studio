@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { RgbaImage } from '../engine/image/types';
 import { generateComposition } from '../engine/layer/generate';
+import { COMPOSITION_PRESETS } from '../engine/layer/presets';
 import type { Layer, LayerBlend, LayeredComposition } from '../engine/layer/types';
 import type { SelectTool } from './CanvasPreview';
 
@@ -76,6 +77,12 @@ export function LayersPanel({
     setActiveLayerId(comp.layers[comp.layers.length - 1]?.id ?? null);
   };
 
+  const applyDemo = (build: (s?: RgbaImage) => LayeredComposition) => {
+    const comp = build(source ?? undefined);
+    setComposition(comp);
+    setActiveLayerId(comp.layers[comp.layers.length - 1]?.id ?? null);
+  };
+
   if (!composition) {
     return (
       <>
@@ -100,6 +107,14 @@ export function LayersPanel({
           disabled={!source} onClick={generate}>
           Generate {count} layers
         </button>
+        <hr className="divider" />
+        <h3 className="sub-h">Demo compositions</h3>
+        {COMPOSITION_PRESETS.map((p) => (
+          <button key={p.id} className="ghost" style={{ width: '100%', marginBottom: 6 }}
+            disabled={!source} onClick={() => applyDemo(p.build)}>
+            {p.name}
+          </button>
+        ))}
         {!source && <p className="hint" style={{ marginTop: 8 }}>Load an image first.</p>}
       </>
     );

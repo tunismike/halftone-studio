@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { PipelineParams } from '../engine/pipeline';
 import type { RgbaImage } from '../engine/image/types';
+import type { LayeredComposition } from '../engine/layer/types';
 import { INTENTS, type Intent, type RecipeReport } from '../engine/recipe/types';
 import { buildPrompt } from '../engine/recipe/prompts';
 import { validateAndMapRecipe, mapRecipe } from '../engine/recipe/validate';
@@ -9,6 +10,7 @@ import { defaultRecipeForIntent } from '../engine/recipe/intents';
 interface Props {
   source: RgbaImage | null;
   applyParams: (p: PipelineParams) => void;
+  applyComposition: (c: LayeredComposition) => void;
 }
 
 const INTENT_LABEL: Record<Intent, string> = {
@@ -20,7 +22,7 @@ const INTENT_LABEL: Record<Intent, string> = {
   duotone: 'Duotone',
 };
 
-export function AiRecipePanel({ source, applyParams }: Props) {
+export function AiRecipePanel({ source, applyParams, applyComposition }: Props) {
   const [intent, setIntent] = useState<Intent>('halftone-poster');
   const [json, setJson] = useState('');
   const [report, setReport] = useState<RecipeReport | null>(null);
@@ -38,7 +40,8 @@ export function AiRecipePanel({ source, applyParams }: Props) {
 
   const applyJson = () => {
     const r = validateAndMapRecipe(json, intent, source ?? undefined);
-    applyParams(r.params);
+    if (r.composition) applyComposition(r.composition);
+    else applyParams(r.params);
     setReport(r.report);
   };
 
