@@ -34,3 +34,10 @@ npm run build      # tsc -b && vite build
 - `src/ui/` — React app, controls, canvas preview, preset gallery
 - `src/presets/` — built-in preset definitions
 - `docs/` — palette reference, goal spec
+
+## Licensing
+
+Vector Trace mode uses [Potrace](https://potrace.sourceforge.net/) via
+`esm-potrace-wasm`, which is **GPL-2.0**. Because that code is bundled into the
+shipped app, the distributed application is therefore licensed under
+**GPL-2.0**.

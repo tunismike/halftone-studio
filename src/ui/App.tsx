@@ -9,6 +9,7 @@ import type { Layer, LayeredComposition } from '../engine/layer/types';
 import { makeLayer } from '../engine/layer/generate';
 import { floodSelect, polygonMask, maskToRgba, maskIsEmpty, type Pt } from '../engine/select/select';
 import { traceBinaryMask } from '../engine/trace/trace';
+import { potraceToSvg } from '../engine/trace/potrace';
 import {
   saveProjectState, loadProjectState, saveProjectSource, loadProjectSource, clearProject,
 } from '../engine/project/store';
@@ -371,15 +372,28 @@ export function App() {
     }
     setVecUrl(null); // raster shows while we (re)build the full-res vectors
     let cancelled = false;
+    const show = (xml: string) => {
+      // Guard against pathologically large output (deep zoom would re-raster it
+      // every step); keep the raster preview in that case.
+      if (!cancelled && xml.length <= 12_000_000) {
+        setVecUrl(URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml' })));
+      }
+    };
     const t = window.setTimeout(async () => {
       try {
-        const xml = await client.serializeSvg(params, { mode: 'editable' });
-        // Guard against pathologically large mark sets (deep zoom would re-raster
-        // them every step); keep the raster preview in that case.
-        if (!cancelled && xml.length <= 12_000_000) {
-          setVecUrl(URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml' })));
+        if (params.mode.kind === 'trace' && source) {
+          // SOTA tracer (Potrace) on the main thread for trace mode.
+          show(await potraceToSvg(source, params.mode.trace, params.background, params.transparent));
+        } else {
+          show(await client.serializeSvg(params, { mode: 'editable' }));
         }
-      } catch { /* non-vector mode or worker busy → keep raster */ }
+      } catch {
+        // Potrace failed → fall back to the homegrown worker SVG so trace
+        // mode still previews.
+        if (params.mode.kind === 'trace') {
+          try { show(await client.serializeSvg(params, { mode: 'editable' })); } catch { /* keep raster */ }
+        }
+      }
     }, 250);
     return () => { cancelled = true; clearTimeout(t); };
   }, [params, source, client, setVecUrl]);
@@ -461,6 +475,18 @@ export function App() {
 
   const onExportSvg = async () => {
     if (!source || !svgEnabled) return;
+    // Trace mode exports the SOTA Potrace SVG (same as the live preview).
+    if (mode.kind === 'trace') {
+      let xml: string;
+      try {
+        xml = await potraceToSvg(source, mode.trace, background, transparent);
+      } catch {
+        // Fall back to the homegrown tracer if Potrace fails for any reason.
+        xml = await client.serializeSvg(params, { mode: svgMode });
+      }
+      triggerDownload(new Blob([xml], { type: 'image/svg+xml' }), `${baseName}-trace.svg`);
+      return;
+    }
     const xml = await client.serializeSvg(params, {
       mode: svgMode,
       title: `${baseName} halftone`,
