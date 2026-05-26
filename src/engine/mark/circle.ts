@@ -42,7 +42,12 @@ export function samplesToCircles(samples: Sample[], p: DotParams, edges?: LumIma
         const e = sampleBilinear(edges, s.x, s.y);
         cap = cap * (1 - e * ea);
       }
-      const target = (1 - s.value) * half * p.gain;
+      // Dot AREA must be proportional to ink coverage (1 - tone), so radius
+      // scales with sqrt(coverage). Linear radius makes midtones far too light
+      // (area ∝ coverage²). sqrt keeps the endpoints (0 and `half`) anchored and
+      // correctly darkens the mid-range.
+      const coverage = Math.max(0, 1 - s.value);
+      const target = Math.sqrt(coverage) * half * p.gain;
       r = Math.max(minR, Math.min(cap, target)) * d.scale;
     }
     if (r > 0.05) {

@@ -38,7 +38,9 @@ export function samplesToBlobs(samples: Sample[], p: BlobParams, edges?: LumImag
       const e = sampleBilinear(edges, s.x, s.y);
       cap = cap * (1 - e * ea);
     }
-    const target = (1 - s.value) * half * p.gain;
+    // Area-correct: radius ∝ sqrt(coverage) so blob area is linear in ink
+    // coverage (linear radius makes midtones too light).
+    const target = Math.sqrt(Math.max(0, 1 - s.value)) * half * p.gain;
     let r = Math.max(p.minRatio * half, Math.min(cap, target));
     r *= d.scale;
     if (r < 0.1) continue;

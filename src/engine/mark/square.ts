@@ -36,7 +36,9 @@ export function samplesToSquares(samples: Sample[], p: SquareParams): PolyMark[]
     const d = distressDelta(p.distress, i);
     if (d.skip) continue;
     const half = s.cellSize / 2;
-    const target = (1 - s.value) * half * p.gain;
+    // Square area ∝ side²; scale the half-side with sqrt(coverage) so dot area
+    // is linear in ink coverage (area-correct halftone, mids not too light).
+    const target = Math.sqrt(Math.max(0, 1 - s.value)) * half * p.gain;
     let r = Math.max(p.minRatio * half, Math.min(p.maxRatio * half, target));
     r *= d.scale;
     if (r < 0.1) continue;
