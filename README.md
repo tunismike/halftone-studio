@@ -2,6 +2,8 @@
 
 Browser-based vector halftone, dithering, and screen-print texture tool. React + Vite + TypeScript, with an OffscreenCanvas Web Worker pipeline and layered caching.
 
+**Live app: https://tunismike.github.io/halftone-studio/** — installable PWA, works offline, autosaves your project locally.
+
 ## Features
 
 - **Modes**: dither/threshold, vector halftone, CMYK separation, spot/duotone, palette dither, tonal (1–5 inks), RD-contour strokes
