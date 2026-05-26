@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { RgbaImage } from '../engine/image/types';
 import { generateComposition } from '../engine/layer/generate';
 import type { Layer, LayerBlend, LayeredComposition } from '../engine/layer/types';
@@ -33,6 +33,7 @@ export function LayersPanel({
 }: Props) {
   const [kind, setKind] = useState<'tone' | 'color'>('color');
   const [count, setCount] = useState(4);
+  const dragFrom = useRef<number | null>(null);
 
   const selectionSection = (
     <div className="select-tools">
@@ -120,18 +121,33 @@ export function LayersPanel({
   // Display top layer first (draw order is bottom-to-top).
   const display = [...composition.layers].reverse();
 
+  // Reorder within the (reversed) display list, then write back draw order.
+  const reorderDisplay = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0) return;
+    const next = [...display];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setComposition({ ...composition, layers: [...next].reverse() });
+  };
+
   return (
     <>
       <p className="hint">
         Click a layer to make it active, then edit its style in the Mode / Tone /
-        Texture / Colors panels. Drag-reorder and grouped SVG land next.
+        Texture / Colors panels. Drag the handle to reorder; export grouped SVG.
       </p>
       {selectionSection}
       <div className="layer-list">
-        {display.map((l) => (
+        {display.map((l, di) => (
           <div key={l.id}
             className={`layer-row${l.id === activeLayerId ? ' on' : ''}`}
-            onClick={() => setActiveLayerId(l.id)}>
+            onClick={() => setActiveLayerId(l.id)}
+            onDragOver={(e) => { if (dragFrom.current !== null) e.preventDefault(); }}
+            onDrop={(e) => { e.preventDefault(); if (dragFrom.current !== null) reorderDisplay(dragFrom.current, di); dragFrom.current = null; }}>
+            <span className="drag-handle" draggable title="Drag to reorder"
+              onClick={(e) => e.stopPropagation()}
+              onDragStart={(e) => { dragFrom.current = di; e.dataTransfer.effectAllowed = 'move'; }}
+              onDragEnd={() => { dragFrom.current = null; }}>⠿</span>
             <input type="checkbox" checked={l.enabled} title="Show/hide layer"
               onClick={(e) => e.stopPropagation()}
               onChange={(e) => update(l.id, { enabled: e.target.checked })} />
@@ -149,8 +165,32 @@ export function LayersPanel({
       {(() => {
         const active = composition.layers.find((l) => l.id === activeLayerId);
         if (!active) return null;
+        const rk = active.region.kind;
         return (
           <div className="layer-detail">
+            <div className="row">
+              <label>Region</label>
+              <select value={rk}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === 'all') update(active.id, { region: { kind: 'all' } });
+                  else if (v === 'toneBand') update(active.id, { region: { kind: 'toneBand', min: 0, max: 0.5 } });
+                }}>
+                <option value="all">Whole image</option>
+                <option value="toneBand">Tone band</option>
+                {rk === 'colorRegion' && <option value="colorRegion">Color region</option>}
+                {rk === 'selection' && <option value="selection">Selection</option>}
+                {rk === 'mask' && <option value="mask">Mask</option>}
+              </select>
+            </div>
+            {active.region.kind === 'toneBand' && (
+              <>
+                <Slider label="Tone min" value={active.region.min} min={0} max={1} step={0.02}
+                  onChange={(v) => update(active.id, { region: { kind: 'toneBand', min: v, max: (active.region as { max: number }).max } })} />
+                <Slider label="Tone max" value={active.region.max} min={0} max={1} step={0.02}
+                  onChange={(v) => update(active.id, { region: { kind: 'toneBand', min: (active.region as { min: number }).min, max: v } })} />
+              </>
+            )}
             <div className="row">
               <label>Blend</label>
               <select value={active.blend}

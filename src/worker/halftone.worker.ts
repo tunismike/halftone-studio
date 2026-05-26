@@ -8,7 +8,8 @@ import { regionMask } from '../engine/layer/region';
 import { compositeLayers, type CompositeLayer } from '../engine/layer/composite';
 import { colorAssignments, colorRegionMask } from '../engine/layer/color-region';
 import type { LayeredComposition, Layer } from '../engine/layer/types';
-import { markSetToSvg } from '../engine/export/svg';
+import { markSetToSvg, markSetToSvgGroups } from '../engine/export/svg';
+import { traceBinaryMask, loopToPathD } from '../engine/trace/trace';
 import { buildZip } from '../engine/export/zip';
 import { generateTexture } from '../engine/texture/recipes';
 import { findBundledTexture } from '../engine/texture/catalog';
@@ -292,6 +293,11 @@ ctx.onmessage = async (e: MessageEvent<Request>) => {
       case 'serialize-svg': {
         if (!source) throw new Error('no source loaded');
         const t0 = performance.now();
+        if (msg.params.composition) {
+          const xml = await compositionToSvg(msg.params.composition, source, msg.opts);
+          post({ id: msg.id, kind: 'svg', xml, durationMs: performance.now() - t0 });
+          break;
+        }
         const out = runCachedPipeline(exportCache, source, msg.params);
         if (out.kind === 'traced') {
           const xml = tracedToSvg(out.regions, out.width, out.height, out.background, out.transparent);
@@ -538,6 +544,81 @@ function renderComposition(canvas: OffscreenCanvas, comp: LayeredComposition, sr
   const id = ctx.createImageData(w, h);
   id.data.set(composed);
   ctx.putImageData(id, 0, 0);
+}
+
+function svgEsc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Serialize a composition to a grouped SVG: one <g> per enabled layer, clipped
+// to its region. Trace layers emit vector fills, halftone/vector layers emit
+// mark geometry, and pixel modes (raster/palette/tonal) embed a clipped raster.
+async function compositionToSvg(
+  comp: LayeredComposition, src: RgbaImage, opts: { mode: 'editable' | 'compact' | 'production' },
+): Promise<string> {
+  const w = src.width, h = src.height;
+  const lum = rgbaToLum(src);
+  const resolveMask = (id: string) => maskAlphaFor(id, w, h);
+  const assignByCount = new Map<number, Uint8Array>();
+  const resolveColorRegion = (count: number, index: number) => {
+    let a = assignByCount.get(count);
+    if (!a) { a = colorAssignments(src, count); assignByCount.set(count, a); }
+    return colorRegionMask(a, index);
+  };
+
+  const defs: string[] = [];
+  const body: string[] = [];
+  let i = 0;
+  for (const layer of comp.layers) {
+    if (!layer.enabled) continue;
+    const idx = i++;
+
+    // Region → clip path (skip for full-image, un-inverted layers).
+    let clipAttr = '';
+    if (layer.region.kind !== 'all' || layer.invertRegion) {
+      const mask = regionMask(layer.region, { lum, resolveMask, resolveColorRegion }, layer.invertRegion, 0);
+      const bin = new Uint8Array(w * h);
+      for (let k = 0; k < bin.length; k++) bin[k] = mask[k] > 0.5 ? 1 : 0;
+      const loops = traceBinaryMask(bin, w, h);
+      if (loops.length) {
+        const d = loops.map((loop) => loopToPathD(loop, 0)).join(' ');
+        defs.push(`<clipPath id="clip-${idx}"><path d="${d}"/></clipPath>`);
+        clipAttr = ` clip-path="url(#clip-${idx})"`;
+      }
+    }
+
+    // Layer content.
+    const out = runCachedPipeline(layerCache(layer.id), src, layerToParams(layer));
+    let content = '';
+    if (out.kind === 'traced') {
+      content = out.regions
+        .map((r) => `<path fill="${r.color}" fill-rule="evenodd" d="${r.d}"/>`)
+        .join('');
+    } else if (out.kind === 'marks') {
+      content = markSetToSvgGroups(out.set, opts);
+    } else {
+      // raster / indexed → embed a PNG of the rendered layer.
+      if (compScratch.width !== w) compScratch.width = w;
+      if (compScratch.height !== h) compScratch.height = h;
+      drawOutput(compScratch, out);
+      const blob = await compScratch.convertToBlob({ type: 'image/png' });
+      const uri = await blobToDataUri(blob);
+      content = `<image href="${uri}" x="0" y="0" width="${w}" height="${h}"/>`;
+    }
+
+    const gAttrs = [`id="${svgEsc(layer.name)}"`];
+    if (clipAttr) gAttrs.push(clipAttr.trim());
+    if (layer.opacity < 1) gAttrs.push(`opacity="${layer.opacity}"`);
+    if (layer.blend !== 'normal') gAttrs.push(`style="mix-blend-mode:${layer.blend}"`);
+    body.push(`<g ${gAttrs.join(' ')}>${content}</g>`);
+  }
+
+  const parts = [`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`];
+  if (!comp.transparent) parts.push(`<rect width="${w}" height="${h}" fill="${comp.background}"/>`);
+  if (defs.length) parts.push(`<defs>${defs.join('')}</defs>`);
+  parts.push(...body);
+  parts.push('</svg>');
+  return parts.join('\n');
 }
 
 function resampleTo(

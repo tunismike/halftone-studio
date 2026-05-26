@@ -423,10 +423,12 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adjust, preprocess, mode, background, foreground, transparent]);
 
-  // Grouped SVG export for compositions lands in P6; for now SVG export covers
-  // single-mode vector docs only.
-  const svgEnabled = source != null && !composition && mode.kind !== 'raster' && mode.kind !== 'paletteDither' && mode.kind !== 'tonal';
-  const bundleEnabled = svgEnabled && (mode.kind === 'cmyk' || mode.kind === 'spot');
+  // Compositions always export as grouped SVG; single-mode docs export only
+  // for vector-producing modes.
+  const svgEnabled = source != null && (
+    composition != null || (mode.kind !== 'raster' && mode.kind !== 'paletteDither' && mode.kind !== 'tonal')
+  );
+  const bundleEnabled = svgEnabled && !composition && (mode.kind === 'cmyk' || mode.kind === 'spot');
 
   const controlsProps = {
     adjust: eff.adjust, setAdjust: eff.setAdjust,

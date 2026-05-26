@@ -164,6 +164,8 @@ button.ghost:disabled { opacity: .35; cursor: not-allowed; }
 }
 .layer-row:hover { background: var(--bg-2); }
 .layer-row.on { border-color: var(--accent); background: var(--bg-2); }
+.layer-row .drag-handle { flex: 0 0 auto; color: var(--faint); cursor: grab; font-size: 11px; line-height: 1; user-select: none; }
+.layer-row .drag-handle:active { cursor: grabbing; }
 .layer-row input[type="checkbox"] { accent-color: var(--accent); flex: 0 0 auto; }
 .layer-row .swatch { width: 13px; height: 13px; border-radius: 3px; flex: 0 0 auto; border: 1px solid var(--border); }
 .layer-row .layer-name {
