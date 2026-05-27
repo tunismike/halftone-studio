@@ -10,7 +10,9 @@ export default defineConfig(({ command }) => ({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt' so the app can surface a "new version — reload" toast instead
+      // of silently swapping assets only on the next cold load.
+      registerType: 'prompt',
       includeAssets: ['icon.svg'],
       manifest: {
         name: 'Halftone Studio',

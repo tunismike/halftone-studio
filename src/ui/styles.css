@@ -164,18 +164,24 @@ button.ghost:disabled { opacity: .35; cursor: not-allowed; }
 button.ghost.icon { padding: 6px 9px; font-size: 14px; line-height: 1; }
 button.ghost.icon:disabled { opacity: 0.35; cursor: default; }
 
-.restored-banner {
+.toast-stack {
   position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 50;
-  display: flex; align-items: center; gap: 12px;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  display: flex; align-items: center; gap: 12px; max-width: 64vw;
   background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px;
   padding: 8px 14px; font-size: 12.5px; color: var(--text);
   box-shadow: 0 10px 30px -10px rgba(0,0,0,.6);
 }
-.restored-banner button {
+.toast.error { border-color: #b4502f; }
+.toast button {
   background: transparent; border: 0; color: var(--accent); cursor: pointer;
-  font-size: 12.5px; font-family: var(--sans); padding: 2px 4px;
+  font-size: 12.5px; font-family: var(--sans); padding: 2px 4px; white-space: nowrap;
 }
-.restored-banner button:hover { text-decoration: underline; }
+.toast button:hover { text-decoration: underline; }
 
 /* Layers panel */
 .layer-list { display: flex; flex-direction: column; gap: 3px; margin: 4px 0 10px; }

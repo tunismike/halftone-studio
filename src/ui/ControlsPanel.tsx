@@ -258,11 +258,13 @@ export function ControlsPanel(props: Props) {
         </label>
         <div className="row">
           <label>Resampling</label>
-          <select value={resampling}
+          {/* Downscale now uses a linear-light area-average box filter, so the
+              old bilinear/bicubic distinction no longer applies — it's Smooth
+              vs Pixelated. 'bicubic' kept as an alias for older saved links. */}
+          <select value={resampling === 'bicubic' ? 'bilinear' : resampling}
             onChange={(e) => setResampling(e.target.value as ResamplingMode)}>
-            <option value="nearest">Nearest (pixel-art)</option>
-            <option value="bilinear">Bilinear (fast)</option>
-            <option value="bicubic">Bicubic (high quality)</option>
+            <option value="bilinear">Smooth (area average)</option>
+            <option value="nearest">Pixelated (nearest)</option>
           </select>
         </div>
         {activeCellSize !== null && sourceWidth > 0 && (

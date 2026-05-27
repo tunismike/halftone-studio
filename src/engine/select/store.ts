@@ -60,3 +60,21 @@ export async function getSelection(id: string): Promise<Blob | null> {
     req.onerror = () => reject(req.error);
   });
 }
+
+// Delete any persisted selection masks not in `keep` — stops orphaned masks
+// (from deleted layers / cleared compositions) accumulating in IndexedDB.
+export async function pruneSelections(keep: string[]): Promise<void> {
+  const set = new Set(keep);
+  const orphans = listSelectionIds().filter((id) => !set.has(id));
+  if (!orphans.length) return;
+  try {
+    const db = await openDb();
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      for (const id of orphans) tx.objectStore(STORE).delete(id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch { /* ignore */ }
+  writeIds(listSelectionIds().filter((id) => set.has(id)));
+}

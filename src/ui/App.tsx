@@ -15,9 +15,15 @@ import { defaultTraceMode } from '../engine/pipeline';
 import {
   saveProjectState, loadProjectState, saveProjectSource, loadProjectSource, clearProject,
 } from '../engine/project/store';
-import { putSelection, getSelection, listSelectionIds } from '../engine/select/store';
+import { putSelection, getSelection, listSelectionIds, pruneSelections } from '../engine/select/store';
 import { serializeProject, deserializeProject } from '../engine/project/serialize';
 import { rgbaToPngBlob, decodeBlobToRgba } from '../engine/image/codec';
+import { boxDownsampleLinear } from '../engine/image/resample';
+
+// Cap the stored source so a huge upload can't OOM/hang the worker. Export
+// still runs at this resolution (plenty for print); the preview is capped
+// separately. Downscale uses the linear-light box filter.
+const MAX_SOURCE_SIDE = 4500;
 import type { PipelineParams } from '../engine/pipeline';
 import { defaultAdjust, type AdjustParams } from '../engine/image/adjust';
 import { defaultPreprocess, type PreprocessParams } from '../engine/image/preprocess';
@@ -64,6 +70,10 @@ export function App() {
   const [pendingSelection, setPendingSelection] =
     useState<{ mask: Uint8Array; w: number; h: number; outline: Pt[][] } | null>(null);
   const [restored, setRestored] = useState(false);
+  const [updateReady, setUpdateReady] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const updateSwRef = useRef<((reload?: boolean) => Promise<void>) | null>(null);
   // Crisp vector preview for Vector-trace mode (full-res, matches SVG export).
   const [vectorPreviewUrl, setVectorPreviewUrl] = useState<string | null>(null);
   const vecUrlRef = useRef<string | null>(null);
@@ -77,6 +87,33 @@ export function App() {
   const clientRef = useRef<HalftoneClient | null>(null);
   if (!clientRef.current) clientRef.current = new HalftoneClient();
   const client = clientRef.current;
+
+  // PWA: prompt to reload when a new deploy is available (instead of a silent
+  // swap on next cold load). Surface worker + uncaught errors as a toast.
+  useEffect(() => {
+    let cancelled = false;
+    import('virtual:pwa-register').then(({ registerSW }) => {
+      if (cancelled) return;
+      updateSwRef.current = registerSW({ onNeedRefresh: () => setUpdateReady(true) });
+    }).catch(() => { /* SW unsupported */ });
+    const onErr = (e: ErrorEvent) => setErrorMsg(e.message || 'Something went wrong.');
+    const onRej = (e: PromiseRejectionEvent) =>
+      setErrorMsg(String(e.reason?.message ?? e.reason ?? 'Something went wrong.'));
+    window.addEventListener('error', onErr);
+    window.addEventListener('unhandledrejection', onRej);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('error', onErr);
+      window.removeEventListener('unhandledrejection', onRej);
+    };
+  }, []);
+
+  // Auto-dismiss transient notices.
+  useEffect(() => {
+    if (!notice) return;
+    const t = window.setTimeout(() => setNotice(null), 5000);
+    return () => clearTimeout(t);
+  }, [notice]);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasAttached = useRef(false);
@@ -341,6 +378,7 @@ export function App() {
       : [];
     const t = window.setTimeout(() => {
       void saveProjectState({ version: 1, filename, params, selectionIds, savedAt: Date.now() });
+      void pruneSelections(selectionIds); // drop masks no layer references anymore
     }, 500);
     return () => clearTimeout(t);
   }, [params, filename, source, composition]);
@@ -401,7 +439,14 @@ export function App() {
   }, [params, source, client, setVecUrl]);
 
   const onImage = useCallback((img: RgbaImage, name: string) => {
-    setSource(img);
+    let final = img;
+    const longest = Math.max(img.width, img.height);
+    if (longest > MAX_SOURCE_SIDE) {
+      const scale = MAX_SOURCE_SIDE / longest;
+      final = boxDownsampleLinear(img, Math.round(img.width * scale), Math.round(img.height * scale));
+      setNotice(`Large image downscaled to ${final.width}×${final.height} for performance.`);
+    }
+    setSource(final);
     setFilename(name);
   }, []);
 
@@ -534,7 +579,7 @@ export function App() {
       restoreParams(proj.params);
       setRestored(false);
     } catch (e) {
-      window.alert(`Could not open project: ${e instanceof Error ? e.message : 'invalid file'}`);
+      setErrorMsg(`Could not open project: ${e instanceof Error ? e.message : 'invalid file'}`);
     }
   };
 
@@ -549,7 +594,7 @@ export function App() {
     if (!source) return;
     const w = source.width, h = source.height;
     const mask = lineMask(source);
-    if (maskIsEmpty(mask)) { window.alert('No strong edges found to keep as lines.'); return; }
+    if (maskIsEmpty(mask)) { setNotice('No strong edges found to keep as lines.'); return; }
     const maskId = `line-${Date.now().toString(36)}`;
     const canvas = document.createElement('canvas');
     canvas.width = w; canvas.height = h;
@@ -807,13 +852,34 @@ export function App() {
         <div className="drop-overlay"><div className="drop-overlay-inner">Drop image to load</div></div>
       )}
 
-      {restored && (
-        <div className="restored-banner">
-          <span>Restored your last session.</span>
-          <button onClick={() => setRestored(false)}>Dismiss</button>
-          <button onClick={startFresh}>Start fresh</button>
-        </div>
-      )}
+      <div className="toast-stack">
+        {updateReady && (
+          <div className="toast">
+            <span>New version available.</span>
+            <button onClick={() => void updateSwRef.current?.(true)}>Reload</button>
+            <button onClick={() => setUpdateReady(false)}>Later</button>
+          </div>
+        )}
+        {errorMsg && (
+          <div className="toast error">
+            <span>{errorMsg}</span>
+            <button onClick={() => setErrorMsg(null)}>Dismiss</button>
+          </div>
+        )}
+        {notice && (
+          <div className="toast">
+            <span>{notice}</span>
+            <button onClick={() => setNotice(null)}>OK</button>
+          </div>
+        )}
+        {restored && (
+          <div className="toast">
+            <span>Restored your last session.</span>
+            <button onClick={() => setRestored(false)}>Dismiss</button>
+            <button onClick={startFresh}>Start fresh</button>
+          </div>
+        )}
+      </div>
 
       <main className="stage">
         <CanvasPreview
