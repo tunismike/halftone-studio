@@ -1,4 +1,4 @@
-import { sampleBilinear } from '../image/sample';
+import { sampleCellAverage } from '../image/sample';
 import type { LumImage, Sample } from '../image/types';
 import { clampCell } from './sample-budget';
 
@@ -44,7 +44,7 @@ export function hexScreen(img: LumImage, p: HexParams): Sample[] {
       const x = dx + cx0;
       const y = dy + cy0;
       if (x < -cell || y < -cell || x > img.width + cell || y > img.height + cell) continue;
-      out.push({ x, y, value: sampleBilinear(img, x, y), cellSize: cell, angle: p.angleDeg });
+      out.push({ x, y, value: sampleCellAverage(img, x, y, cell), cellSize: cell, angle: p.angleDeg });
     }
   }
   return out;

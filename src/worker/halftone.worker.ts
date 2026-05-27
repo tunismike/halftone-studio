@@ -4,6 +4,7 @@ import { runCachedPipeline } from '../engine/pipeline-cached';
 import { renderMarkSetToCanvas, renderIndexedToCanvas, renderTracedToCanvas } from '../engine/render';
 import { generateReferenceImage } from '../engine/image/reference';
 import { lumToRgba, rgbaToLum } from '../engine/image/luminance';
+import { boxDownsampleLinear } from '../engine/image/resample';
 import { regionMask } from '../engine/layer/region';
 import { compositeLayers, type CompositeLayer } from '../engine/layer/composite';
 import { colorAssignments, colorRegionMask } from '../engine/layer/color-region';
@@ -631,22 +632,24 @@ function resampleTo(
   const scale = maxSide / longest;
   const pw = Math.max(1, Math.round(src.width * scale));
   const ph = Math.max(1, Math.round(src.height * scale));
-  const fullC = new OffscreenCanvas(src.width, src.height);
-  const fctx = fullC.getContext('2d') as OffscreenCanvasRenderingContext2D;
-  const fid = fctx.createImageData(src.width, src.height);
-  fid.data.set(src.data);
-  fctx.putImageData(fid, 0, 0);
-  const small = new OffscreenCanvas(pw, ph);
-  const sctx = small.getContext('2d') as OffscreenCanvasRenderingContext2D;
   if (mode === 'nearest') {
+    // Pixel-art intent: no smoothing.
+    const fullC = new OffscreenCanvas(src.width, src.height);
+    const fctx = fullC.getContext('2d') as OffscreenCanvasRenderingContext2D;
+    const fid = fctx.createImageData(src.width, src.height);
+    fid.data.set(src.data);
+    fctx.putImageData(fid, 0, 0);
+    const small = new OffscreenCanvas(pw, ph);
+    const sctx = small.getContext('2d') as OffscreenCanvasRenderingContext2D;
     sctx.imageSmoothingEnabled = false;
-  } else {
-    sctx.imageSmoothingEnabled = true;
-    sctx.imageSmoothingQuality = mode === 'bicubic' ? 'high' : 'low';
+    sctx.drawImage(fullC, 0, 0, pw, ph);
+    return { width: pw, height: ph, data: new Uint8ClampedArray(sctx.getImageData(0, 0, pw, ph).data) };
   }
-  sctx.drawImage(fullC, 0, 0, pw, ph);
-  const pid = sctx.getImageData(0, 0, pw, ph);
-  return { width: pw, height: ph, data: new Uint8ClampedArray(pid.data) };
+  // Downscale via an area-average box filter in LINEAR light: integrates the
+  // full footprint (no aliasing/moiré with the halftone screen) and averages
+  // light, not gamma (detailed regions don't darken). Both 'bilinear' and
+  // 'bicubic' get this correct filter for reduction.
+  return boxDownsampleLinear(src, pw, ph);
 }
 
 export {};

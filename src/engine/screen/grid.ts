@@ -1,5 +1,5 @@
 import type { LumImage, Sample } from '../image/types';
-import { sampleBilinear } from '../image/sample';
+import { sampleCellAverage } from '../image/sample';
 import { clampCell } from './sample-budget';
 
 export interface GridParams {
@@ -42,7 +42,7 @@ export function gridScreen(img: LumImage, p: GridParams): Sample[] {
       const x = dx + cx0;
       const y = dy + cy0;
       if (x < -cell || y < -cell || x > img.width + cell || y > img.height + cell) continue;
-      const value = sampleBilinear(img, x, y);
+      const value = sampleCellAverage(img, x, y, cell);
       out.push({ x, y, value, cellSize: cell, angle: p.angleDeg });
     }
   }

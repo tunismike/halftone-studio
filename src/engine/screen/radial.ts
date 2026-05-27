@@ -1,4 +1,4 @@
-import { sampleBilinear } from '../image/sample';
+import { sampleCellAverage } from '../image/sample';
 import type { LumImage, Sample } from '../image/types';
 import { clampCell } from './sample-budget';
 
@@ -17,7 +17,7 @@ export function radialScreen(img: LumImage, p: RadialParams): Sample[] {
     Math.max(cy, img.height - cy),
   );
   const out: Sample[] = [];
-  out.push({ x: cx, y: cy, value: sampleBilinear(img, cx, cy), cellSize: cell });
+  out.push({ x: cx, y: cy, value: sampleCellAverage(img, cx, cy, cell), cellSize: cell });
   const ringCount = Math.ceil(maxR / cell);
   for (let i = 1; i <= ringCount; i++) {
     const r = i * cell;
@@ -31,7 +31,7 @@ export function radialScreen(img: LumImage, p: RadialParams): Sample[] {
       out.push({
         x,
         y,
-        value: sampleBilinear(img, x, y),
+        value: sampleCellAverage(img, x, y, cell),
         cellSize: cell,
         angle: (ang * 180) / Math.PI,
       });

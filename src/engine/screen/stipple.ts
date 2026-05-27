@@ -5,6 +5,8 @@ import { floydSteinberg } from '../dither/floyd';
 import { atkinson } from '../dither/atkinson';
 import { bayer } from '../dither/bayer';
 import { clampCell, MAX_SAMPLES_STIPPLE } from './sample-budget';
+import { lumToLinear } from '../image/sample';
+import { linearToSrgb } from '../color/srgb';
 
 export type StippleDither = 'floyd' | 'atkinson' | 'bayer' | 'blue-noise';
 
@@ -46,9 +48,9 @@ export function stippleScreen(lum: LumImage, p: StippleParams, mask: BlueNoiseMa
       let sum = 0, n = 0;
       for (let y = y0; y < y1; y++) {
         const row = y * lum.width;
-        for (let x = x0; x < x1; x++) { sum += lum.data[row + x]; n++; }
+        for (let x = x0; x < x1; x++) { sum += lumToLinear(lum.data[row + x]); n++; }
       }
-      let v = n > 0 ? sum / n : 0;
+      let v = n > 0 ? linearToSrgb(sum / n) : 0;
       if (p.contrast !== 0) {
         v = (v - 0.5) * cFactor + 0.5;
         v = v < 0 ? 0 : v > 1 ? 1 : v;
