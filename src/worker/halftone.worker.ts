@@ -10,7 +10,8 @@ import { compositeLayers, type CompositeLayer } from '../engine/layer/composite'
 import { colorAssignments, colorRegionMask } from '../engine/layer/color-region';
 import type { LayeredComposition, Layer } from '../engine/layer/types';
 import { markSetToSvg, markSetToSvgGroups } from '../engine/export/svg';
-import { traceBinaryMask, loopToPathD } from '../engine/trace/trace';
+import { traceBinaryMask, loopToPathD, type TraceOptions } from '../engine/trace/trace';
+import { potrace as potraceWasm, init as potraceInit } from 'esm-potrace-wasm';
 import { buildZip } from '../engine/export/zip';
 import { generateTexture } from '../engine/texture/recipes';
 import { findBundledTexture } from '../engine/texture/catalog';
@@ -238,7 +239,7 @@ ctx.onmessage = async (e: MessageEvent<Request>) => {
         const tRender0 = performance.now();
         if (previewCanvas) {
           if (comp) {
-            renderComposition(previewCanvas, comp, previewSrc);
+            await renderComposition(previewCanvas, comp, previewSrc);
           } else {
             if (previewCanvas.width !== w) previewCanvas.width = w;
             if (previewCanvas.height !== h) previewCanvas.height = h;
@@ -323,7 +324,7 @@ ctx.onmessage = async (e: MessageEvent<Request>) => {
         const h = source.height;
         const c = new OffscreenCanvas(w, h);
         if (msg.params.composition) {
-          renderComposition(c, msg.params.composition, source);
+          await renderComposition(c, msg.params.composition, source);
         } else {
           const out = runCachedPipeline(exportCache, source, msg.params);
           drawOutput(c, out, !!msg.params.superSample);
@@ -512,7 +513,43 @@ function layerToParams(layer: Layer): PipelineParams {
   };
 }
 
-function renderComposition(canvas: OffscreenCanvas, comp: LayeredComposition, src: RgbaImage): void {
+// SOTA Potrace tracing in the worker so composition trace layers match
+// single trace-mode quality. esm-potrace-wasm takes ImageData directly (no DOM).
+// The wasm has one shared heap and isn't concurrency-safe → serialize via a
+// promise chain.
+let potraceReady: Promise<void> | null = null;
+let potraceChain: Promise<unknown> = Promise.resolve();
+function potraceMapOpts(o: TraceOptions) {
+  return {
+    turdsize: Math.max(0, Math.round(o.minArea)),
+    turnpolicy: 4,
+    alphamax: Math.max(0, Math.min(1.334, o.smoothing * 1.334)),
+    opticurve: 1,
+    opttolerance: Math.max(0, Math.min(1.5, o.simplify * 0.2)),
+    pathonly: false,
+    extractcolors: !o.mono,      // mono → bi-level black trace (clean ink)
+    posterizelevel: Math.max(1, Math.min(255, Math.round(o.colors))),
+    posterizationalgorithm: 0,
+  };
+}
+function potraceLayerSvg(src: RgbaImage, o: TraceOptions): Promise<string> {
+  const run = async (): Promise<string> => {
+    if (!potraceReady) potraceReady = potraceInit();
+    await potraceReady;
+    const id = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
+    let svg = await potraceWasm(id, potraceMapOpts(o));
+    if (!/viewBox=/.test(svg)) svg = svg.replace(/<svg([^>]*)>/, `<svg$1 viewBox="0 0 ${src.width} ${src.height}">`);
+    svg = svg.replace(/<svg([^>]*?)>/, (_m: string, a: string) =>
+      `<svg${a.replace(/\s(width|height)="[^"]*"/g, '')} width="${src.width}" height="${src.height}">`);
+    if (o.mono) svg = svg.replace(/fill="#[0-9a-fA-F]{3,8}"/g, 'fill="#000000"');
+    return svg;
+  };
+  const p = potraceChain.then(run, run);
+  potraceChain = p.then(() => undefined, () => undefined);
+  return p;
+}
+
+async function renderComposition(canvas: OffscreenCanvas, comp: LayeredComposition, src: RgbaImage): Promise<void> {
   const w = src.width, h = src.height;
   if (canvas.width !== w) canvas.width = w;
   if (canvas.height !== h) canvas.height = h;
@@ -526,15 +563,30 @@ function renderComposition(canvas: OffscreenCanvas, comp: LayeredComposition, sr
     return colorRegionMask(a, index);
   };
 
+  // Local scratch (not the shared one): renders may run concurrently because the
+  // trace path awaits Potrace, so each needs its own canvas.
+  const scratch = new OffscreenCanvas(w, h);
+  const sctx = scratch.getContext('2d') as OffscreenCanvasRenderingContext2D;
+
   const layers: CompositeLayer[] = [];
   for (const layer of comp.layers) {
     if (!layer.enabled) continue;
-    const out = runCachedPipeline(layerCache(layer.id), src, layerToParams(layer));
-    if (compScratch.width !== w) compScratch.width = w;
-    if (compScratch.height !== h) compScratch.height = h;
-    drawOutput(compScratch, out);
-    applyTextureOverlay(compScratch, layer.treatment.textureOverlay);
-    const sctx = compScratch.getContext('2d') as OffscreenCanvasRenderingContext2D;
+    const lp = layerToParams(layer);
+    if (lp.mode.kind === 'trace') {
+      // Trace via Potrace: rasterize its SVG into the layer scratch.
+      sctx.clearRect(0, 0, w, h);
+      try {
+        const svg = await potraceLayerSvg(src, lp.mode.trace);
+        const bm = await createImageBitmap(new Blob([svg], { type: 'image/svg+xml' }));
+        sctx.drawImage(bm, 0, 0, w, h);
+        bm.close?.();
+      } catch {
+        drawOutput(scratch, runCachedPipeline(layerCache(layer.id), src, lp)); // fall back to homegrown
+      }
+    } else {
+      drawOutput(scratch, runCachedPipeline(layerCache(layer.id), src, lp));
+    }
+    applyTextureOverlay(scratch, layer.treatment.textureOverlay);
     const rgba = sctx.getImageData(0, 0, w, h).data;
     const mask = regionMask(layer.region, { lum, resolveMask, resolveColorRegion }, layer.invertRegion, layer.feather);
     layers.push({ rgba: new Uint8ClampedArray(rgba), mask, blend: layer.blend, opacity: layer.opacity });
@@ -588,9 +640,22 @@ async function compositionToSvg(
       }
     }
 
-    // Layer content.
-    const out = runCachedPipeline(layerCache(layer.id), src, layerToParams(layer));
+    // Layer content. Trace layers go through Potrace (SOTA) like single
+    // trace-mode; we lift its <path> elements straight into this group.
+    const lp = layerToParams(layer);
     let content = '';
+    if (lp.mode.kind === 'trace') {
+      try {
+        const svg = await potraceLayerSvg(src, lp.mode.trace);
+        content = (svg.match(/<path[^>]*\/>|<path[\s\S]*?<\/path>/g) || []).join('');
+      } catch {
+        const out = runCachedPipeline(layerCache(layer.id), src, lp);
+        if (out.kind === 'traced') content = out.regions.map((r) => `<path fill="${r.color}" fill-rule="evenodd" d="${r.d}"/>`).join('');
+      }
+      body.push(`<g id="${svgEsc(layer.name)}"${clipAttr}${layer.opacity < 1 ? ` opacity="${layer.opacity}"` : ''}${layer.blend !== 'normal' ? ` style="mix-blend-mode:${layer.blend}"` : ''}>${content}</g>`);
+      continue;
+    }
+    const out = runCachedPipeline(layerCache(layer.id), src, lp);
     if (out.kind === 'traced') {
       content = out.regions
         .map((r) => `<path fill="${r.color}" fill-rule="evenodd" d="${r.d}"/>`)
