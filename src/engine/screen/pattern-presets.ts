@@ -89,6 +89,35 @@ export const PATTERN_PRESETS: PatternPreset[] = [
   preset('line-wave-angle', 'Line Wave Angle', {
     field: { kind: 'line' }, cellSize: 10, angleDeg: 45, warp: wave(14, 0.012),
   }),
+
+  // --- organic / stochastic fields ------------------------------------------
+  preset('grain', 'Grain', {
+    field: { kind: 'blueNoise', size: 64, seed: 1 }, cellSize: 1.6, angleDeg: 0,
+  }),
+  preset('petroglyph', 'Petroglyph', {
+    field: { kind: 'rd', pattern: 'squiggles', iterations: 6000, gridSize: 256, seed: 1, featureTexels: 9 },
+    cellSize: 4, angleDeg: 0,
+  }),
+  preset('pebbles', 'Pebbles', {
+    field: { kind: 'rd', pattern: 'pebbles', iterations: 4000, gridSize: 192, seed: 1, featureTexels: 8 },
+    cellSize: 7, angleDeg: 0,
+  }),
+  preset('pavers', 'Pavers', {
+    field: { kind: 'worley', cells: 24, jitter: 0.9, edge: true, seed: 3 },
+    cellSize: 13, angleDeg: 0,
+  }),
+  preset('plasma', 'Plasma', {
+    field: { kind: 'fbm', octaves: 5, lacunarity: 2, gain: 0.5, periods: 24, seed: 5 },
+    cellSize: 5, angleDeg: 0,
+  }),
+  preset('pointillism-1', 'Pointillism 1', {
+    field: { kind: 'points', cells: 40, jitter: 0.55, sizeJitter: 0.45, seed: 11 },
+    cellSize: 9, angleDeg: 0,
+  }),
+  preset('pointillism-2', 'Pointillism 2', {
+    field: { kind: 'points', cells: 56, jitter: 1, sizeJitter: 0.7, seed: 23 },
+    cellSize: 6, angleDeg: 0,
+  }),
 ];
 
 export function findPatternPreset(id: string): PatternPreset | undefined {

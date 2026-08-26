@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   bakePatternField, renderPatternScreen, equalizeTile, inkDemand,
   defaultShaping, noPatternWarp, coverageToMask,
-  type PatternFieldKind, type PatternScreenParams,
+  type PatternFieldKind, type PatternScreenParams, type PatternTile,
 } from './pattern-field';
 import type { LumImage } from '../image/types';
 
@@ -121,6 +121,74 @@ describe('axis-aligned quantization', () => {
       inkFraction({ kind: 'roundDot' }, 0.35, { cellSize: 8, angleDeg: 0, softPreview: true }) - 0.65,
     );
     expect(soft).toBeLessThan(hard / 2);
+  });
+});
+
+// Small/cheap configs — the shapes are what matter here, not the preset scales.
+const BAKED_FIELDS: PatternFieldKind[] = [
+  { kind: 'blueNoise', size: 32, seed: 1 },
+  { kind: 'rd', pattern: 'pebbles', iterations: 600, gridSize: 64, seed: 1, featureTexels: 8 },
+  { kind: 'worley', cells: 8, jitter: 0.9, edge: true, seed: 3 },
+  { kind: 'worley', cells: 8, jitter: 0.9, edge: false, seed: 3 },
+  { kind: 'fbm', octaves: 3, lacunarity: 2, gain: 0.5, periods: 8, seed: 5 },
+  { kind: 'points', cells: 8, jitter: 0.6, sizeJitter: 0.5, seed: 11 },
+];
+
+describe('baked fields', () => {
+  // The raw distributions here are wildly non-uniform — Gray-Scott
+  // concentrations pile up at the attractor, Worley distances are skewed, fbm
+  // is roughly Gaussian. Equalization is what drags all of them onto the same
+  // linear tonal response, so this is the test that earns the whole approach.
+  it.each(BAKED_FIELDS)('equalization gives linear tone ($kind)', (field) => {
+    const tile = bakePatternField(field);
+    for (const t of [0.2, 0.35, 0.5, 0.65, 0.8]) {
+      const cov = renderPatternScreen(flat(t, 160, 160), tile, params(field, { cellSize: 6, angleDeg: 22.5 }));
+      let sum = 0;
+      for (let i = 0; i < cov.data.length; i++) sum += cov.data[i] / 255;
+      expect(sum / cov.data.length).toBeCloseTo(1 - t, 1);
+    }
+  });
+
+  it.each(BAKED_FIELDS)('produces a tileable field in [0,1) ($kind)', (field) => {
+    const tile = bakePatternField(field);
+    expect(tile.values.length).toBe(tile.size * tile.size);
+    expect(tile.tileCells).toBeGreaterThan(0);
+    for (let i = 0; i < tile.values.length; i++) {
+      expect(tile.values[i]).toBeGreaterThan(0);
+      expect(tile.values[i]).toBeLessThan(1);
+    }
+  });
+
+  it.each(BAKED_FIELDS)('is deterministic ($kind)', (field) => {
+    const a = bakePatternField(field);
+    const b = bakePatternField(field);
+    expect(Array.from(a.values)).toEqual(Array.from(b.values));
+  });
+
+  it('reads threshold matrices without interpolating', () => {
+    // Regression: blue noise is one feature per texel, so bilinear sampling
+    // averages four uncorrelated thresholds and drags them toward 0.5 — a
+    // patch asking for 80% ink came back at 97%. Nearest lookup is required
+    // for correctness, not sharpness.
+    const field: PatternFieldKind = { kind: 'blueNoise', size: 32, seed: 1 };
+    const tile = bakePatternField(field);
+    expect(tile.smooth).toBe(false);
+
+    const measure = (t: PatternTile): number => {
+      const cov = renderPatternScreen(flat(0.2, 160, 160), t, params(field, { cellSize: 6, angleDeg: 22.5 }));
+      let sum = 0;
+      for (let i = 0; i < cov.data.length; i++) sum += cov.data[i] / 255;
+      return sum / cov.data.length;
+    };
+    expect(measure(tile)).toBeCloseTo(0.8, 1);
+    // Forcing interpolation on reintroduces the bias this flag exists to avoid.
+    expect(measure({ ...tile, smooth: true })).toBeGreaterThan(0.9);
+  });
+
+  it('a different seed gives a different field', () => {
+    const a = bakePatternField({ kind: 'points', cells: 8, jitter: 0.6, sizeJitter: 0.5, seed: 11 });
+    const b = bakePatternField({ kind: 'points', cells: 8, jitter: 0.6, sizeJitter: 0.5, seed: 12 });
+    expect(Array.from(a.values)).not.toEqual(Array.from(b.values));
   });
 });
 
