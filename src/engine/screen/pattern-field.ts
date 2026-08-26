@@ -63,7 +63,12 @@ export type PatternFieldKind =
   | { kind: 'fbm'; octaves: number; lacunarity: number; gain: number; periods: number; seed: number }
   // Scattered dots on a jittered lattice, each with its own size bias, so dots
   // reach full size at different tones instead of growing in lockstep.
-  | { kind: 'points'; cells: number; jitter: number; sizeJitter: number; seed: number };
+  | { kind: 'points'; cells: number; jitter: number; sizeJitter: number; seed: number }
+  // Rings. Ink appears at a radius rather than at a point, so the screen runs
+  // thin rings → thick rings → merged, with the ring centres and the gaps
+  // between cells the last things to fill. A crazed-tile / paver look that no
+  // centre-out mark can produce.
+  | { kind: 'rings'; cells: number; jitter: number; radius: number; seed: number };
 
 // Domain warp: bend the field's coordinate space before evaluating it. Because
 // the field is a continuous function of (x,y) rather than a rendered bitmap,
@@ -213,12 +218,11 @@ function bakeTorus(size: number, raw: (u: number, v: number) => number): Float32
   return values;
 }
 
-// Scattered dots: survey the 9 neighboring lattice cells for the nearest
-// feature point, but scale each point's distance by its own random bias. The
-// bias is what makes this pointillism rather than Worley — dots pop in and
-// reach full size at different tones, instead of every dot growing in lockstep.
-function pointsRaw(
-  u: number, v: number, cells: number, jitter: number, sizeJitter: number, seed: number,
+// Distance to the nearest feature point on a tileable jittered lattice, in
+// cell units. Shared by the point and ring fields.
+function nearestFeature(
+  u: number, v: number, cells: number, jitter: number, seed: number,
+  bias: (nx: number, ny: number) => number,
 ): number {
   const cu = u * cells;
   const cv = v * cells;
@@ -235,8 +239,7 @@ function pointsRaw(
       const py = dy + 0.5 + jitter * (hash2(nx, ny, seed + 9173) - 0.5);
       const ddx = px - fx;
       const ddy = py - fy;
-      const bias = 1 - sizeJitter * hash2(nx, ny, seed + 4523);
-      const d = Math.sqrt(ddx * ddx + ddy * ddy) / Math.max(0.05, bias);
+      const d = Math.sqrt(ddx * ddx + ddy * ddy) / Math.max(0.05, bias(nx, ny));
       if (d < best) best = d;
     }
   }
@@ -296,8 +299,21 @@ export function bakePatternField(field: PatternFieldKind): PatternTile {
     }
 
     case 'points': {
+      // The per-point size bias is what makes this pointillism rather than
+      // Worley: dots pop in and reach full size at different tones instead of
+      // every dot growing in lockstep.
       const values = bakeTorus(TILE_PROC, (u, v) =>
-        pointsRaw(u, v, field.cells, field.jitter, field.sizeJitter, field.seed),
+        nearestFeature(u, v, field.cells, field.jitter, field.seed,
+          (nx, ny) => 1 - field.sizeJitter * hash2(nx, ny, field.seed + 4523)),
+      );
+      return { size: TILE_PROC, values: equalizeTile(values), tileCells: field.cells, smooth: true };
+    }
+
+    case 'rings': {
+      // Distance from a ring of radius `radius`, so the minimum — where ink
+      // lands first — is a circle rather than a point.
+      const values = bakeTorus(TILE_PROC, (u, v) =>
+        Math.abs(nearestFeature(u, v, field.cells, field.jitter, field.seed, () => 1) - field.radius),
       );
       return { size: TILE_PROC, values: equalizeTile(values), tileCells: field.cells, smooth: true };
     }
@@ -318,7 +334,7 @@ export interface PatternScreenParams {
 // preset rather than reading as "Custom".
 export const defaultPatternScreen: PatternScreenParams = {
   field: { kind: 'cosDot' },
-  cellSize: 9,
+  cellSize: 18,
   angleDeg: 45,
   warp: { ...noPatternWarp },
   shaping: { ...defaultShaping },

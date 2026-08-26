@@ -133,6 +133,7 @@ const BAKED_FIELDS: PatternFieldKind[] = [
   { kind: 'worley', cells: 8, jitter: 0.9, edge: false, seed: 3 },
   { kind: 'fbm', octaves: 3, lacunarity: 2, gain: 0.5, periods: 8, seed: 5 },
   { kind: 'points', cells: 8, jitter: 0.6, sizeJitter: 0.5, seed: 11 },
+  { kind: 'rings', cells: 8, jitter: 0.5, radius: 0.34, seed: 3 },
 ];
 
 describe('baked fields', () => {
