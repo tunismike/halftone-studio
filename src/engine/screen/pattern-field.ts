@@ -90,6 +90,22 @@ export type PatternFieldKind =
        * long the surviving dashes run.
        */
       dash?: { width: number; scale: number; seed: number };
+      /**
+       * Break up the regularity of the pattern's features.
+       *
+       * Gray-Scott converges on a characteristic wavelength, so left alone
+       * every spot comes out the same size and every worm the same width —
+       * the field is organised, and reads that way however its tone is
+       * remapped. Blending noise into it at roughly the feature scale
+       * perturbs each level set independently: outlines go ragged and
+       * features drift in size, because a spot whose core got nudged down
+       * arrives earlier and grows larger than its neighbour.
+       *
+       * `amount` is how much noise is mixed in (past ~0.4 the RD structure
+       * stops being legible), `scale` is noise periods across the tile.
+       * Applied before `dash`, so dashes inherit the roughened shapes.
+       */
+      roughen?: { amount: number; scale: number; seed: number };
     }
   // Worley/cellular. `edge: true` uses F2-F1, whose minima trace the cell
   // boundaries — a paver/crazed-tile look; `false` uses F1 for packed blobs.
@@ -474,6 +490,26 @@ export function bakePatternField(field: PatternFieldKind): PatternTile {
       const raw = new Float32Array(rd.values.length);
       for (let i = 0; i < raw.length; i++) raw[i] = -rd.values[i];
       let values = equalizeTile(raw);
+      const rough = field.roughen;
+      if (rough && rough.amount > 0) {
+        const cfg: FbmParams = { octaves: 3, lacunarity: 2, gain: 0.5 };
+        const n = rd.size;
+        const noise = new Float32Array(n * n);
+        for (let j = 0; j < n; j++) {
+          for (let i = 0; i < n; i++) {
+            noise[j * n + i] = fbmTileable(
+              ((i + 0.5) / n) * rough.scale, ((j + 0.5) / n) * rough.scale,
+              rough.seed, cfg, rough.scale,
+            );
+          }
+        }
+        const noiseEq = equalizeTile(noise);
+        const blended = new Float32Array(values.length);
+        for (let i = 0; i < blended.length; i++) {
+          blended[i] = values[i] * (1 - rough.amount) + noiseEq[i] * rough.amount;
+        }
+        values = equalizeTile(blended);
+      }
       const d = field.dash;
       if (d) {
         // `values` is uniform on [0,1), so the worms are exactly the pixels

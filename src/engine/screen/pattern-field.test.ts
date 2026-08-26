@@ -133,6 +133,8 @@ const BAKED_FIELDS: PatternFieldKind[] = [
   { kind: 'rd', pattern: 'pebbles', iterations: 600, gridSize: 64, seed: 1, featureTexels: 8 },
   { kind: 'rd', pattern: 'squiggles', iterations: 600, gridSize: 64, seed: 1, featureTexels: 8,
     dash: { width: 0.4, scale: 8, seed: 7 } },
+  { kind: 'rd', pattern: 'reptile', iterations: 600, gridSize: 64, seed: 1, featureTexels: 8,
+    roughen: { amount: 0.35, scale: 8, seed: 3 } },
   { kind: 'worley', cells: 8, jitter: 0.9, edge: true, seed: 3 },
   { kind: 'worley', cells: 8, jitter: 0.9, edge: false, seed: 3 },
   { kind: 'fbm', octaves: 3, lacunarity: 2, gain: 0.5, periods: 8, seed: 5 },
@@ -718,5 +720,83 @@ describe('strokes field', () => {
     const dark = marks(FIELD, 0.5);
     expect(dark.count).toBeLessThan(light.count);
     expect(dark.largest).toBeGreaterThan(light.largest * 3);
+  });
+});
+
+describe('rd roughen', () => {
+  // Gray-Scott converges on a characteristic wavelength, so every feature ends
+  // up the same size — the field is organised, and reads that way no matter how
+  // its tone is remapped. Roughening perturbs each level set independently so
+  // features drift in size and their outlines go ragged.
+  const BASE = {
+    kind: 'rd', pattern: 'reptile', iterations: 1200, gridSize: 96, seed: 1, featureTexels: 8,
+  } as const;
+
+  function featureAreas(field: PatternFieldKind, tone: number): number[] {
+    const w = 240, h = 240;
+    const data = new Float32Array(w * h);
+    data.fill(tone);
+    const cov = renderPatternScreen({ width: w, height: h, data },
+      bakePatternField(field), params(field, { cellSize: 6, angleDeg: 0 }));
+    const mask = coverageToMask(cov);
+    const seen = new Uint8Array(mask.length);
+    const areas: number[] = [];
+    for (let i = 0; i < mask.length; i++) {
+      if (!mask[i] || seen[i]) continue;
+      let n = 0;
+      let edge = false;
+      const stack = [i];
+      seen[i] = 1;
+      while (stack.length) {
+        const c = stack.pop()!;
+        n++;
+        const cx = c % w, cy = (c / w) | 0;
+        if (cx === 0 || cy === 0 || cx === w - 1 || cy === h - 1) edge = true;
+        for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]] as const) {
+          const nx = cx + dx, ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const k = ny * w + nx;
+          if (mask[k] && !seen[k]) { seen[k] = 1; stack.push(k); }
+        }
+      }
+      if (!edge) areas.push(n);
+    }
+    return areas;
+  }
+
+  const cv = (xs: number[]): number => {
+    const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
+    const varr = xs.reduce((a, b) => a + (b - mean) * (b - mean), 0) / xs.length;
+    return Math.sqrt(varr) / mean;
+  };
+
+  it('spreads feature sizes that the bare field holds uniform', () => {
+    // Coefficient of variation of mark area: a converged RD field keeps this
+    // low because every spot is the same size.
+    const plain = featureAreas({ ...BASE }, 0.75);
+    const rough = featureAreas({ ...BASE, roughen: { amount: 0.35, scale: 12, seed: 3 } }, 0.75);
+    expect(plain.length).toBeGreaterThan(30);
+    expect(rough.length).toBeGreaterThan(30);
+    expect(cv(rough)).toBeGreaterThan(cv(plain) * 1.25);
+  });
+
+  it('does not disturb tonal linearity', () => {
+    const field: PatternFieldKind = { ...BASE, roughen: { amount: 0.35, scale: 12, seed: 3 } };
+    for (const tone of [0.3, 0.5, 0.7]) {
+      const w = 200, h = 200;
+      const data = new Float32Array(w * h);
+      data.fill(tone);
+      const cov = renderPatternScreen({ width: w, height: h, data },
+        bakePatternField(field), params(field, { cellSize: 6, angleDeg: 22.5 }));
+      let sum = 0;
+      for (let i = 0; i < cov.data.length; i++) sum += cov.data[i] / 255;
+      expect(sum / cov.data.length).toBeCloseTo(1 - tone, 1);
+    }
+  });
+
+  it('zero amount is a no-op', () => {
+    const a = bakePatternField({ ...BASE });
+    const b = bakePatternField({ ...BASE, roughen: { amount: 0, scale: 12, seed: 3 } });
+    expect(Array.from(a.values)).toEqual(Array.from(b.values));
   });
 });

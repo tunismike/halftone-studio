@@ -151,7 +151,8 @@ export const PATTERN_PRESETS: PatternPreset[] = [
   preset('petroglyph', 'Petroglyph', {
     field: {
       kind: 'rd', pattern: 'squiggles', iterations: 3000, gridSize: 160, seed: 1,
-      featureTexels: 9, dash: { width: 0.46, scale: 24, seed: 7 },
+      featureTexels: 9, roughen: { amount: 0.3, scale: 24, seed: 3 },
+      dash: { width: 0.46, scale: 24, seed: 7 },
     },
     cellSize: 4.5, angleDeg: 0,
     warp: { ...noPatternWarp, noiseAmp: 7, noiseFreq: 0.03, noiseSeed: 5 },
@@ -170,7 +171,10 @@ export const PATTERN_PRESETS: PatternPreset[] = [
   // what the reference pebbles actually does. The pure spot regime is too
   // even for it, and now has its own preset below.
   preset('pebbles', 'Pebbles', {
-    field: { kind: 'rd', pattern: 'reptile', iterations: 2500, gridSize: 128, seed: 1, featureTexels: 8 },
+    field: {
+      kind: 'rd', pattern: 'reptile', iterations: 2500, gridSize: 128, seed: 1,
+      featureTexels: 8, roughen: { amount: 0.35, scale: 16, seed: 3 },
+    },
     cellSize: 6, angleDeg: 0,
   }),
   preset('pavers', 'Pavers', {
