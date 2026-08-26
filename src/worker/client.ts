@@ -153,11 +153,15 @@ export class HalftoneClient {
     });
   }
 
-  renderPng(params: PipelineParams): Promise<Blob> {
+  /**
+   * `knockout` takes the pattern-screen print path: hard threshold, one ink on
+   * a transparent ground, alpha strictly 0 or 255 — what a DTF/DTG RIP needs.
+   */
+  renderPng(params: PipelineParams, knockout = false): Promise<Blob> {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject, kind: 'render-png' });
-      this.worker.postMessage({ id, kind: 'render-png', params });
+      this.worker.postMessage({ id, kind: 'render-png', params, knockout });
     });
   }
 

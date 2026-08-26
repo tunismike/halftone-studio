@@ -17,8 +17,9 @@ interface Props {
   activeId: string | null;
 }
 
-const CATEGORY_ORDER: PresetCategory[] = ['grid', 'line', 'wave', 'stochastic', 'organic', 'distress', 'color', 'palette', 'texture'];
+const CATEGORY_ORDER: PresetCategory[] = ['screen', 'grid', 'line', 'wave', 'stochastic', 'organic', 'distress', 'color', 'palette', 'texture'];
 const CATEGORY_LABEL: Record<PresetCategory, string> = {
+  screen: 'Pattern screens',
   grid: 'Grid',
   line: 'Lines',
   wave: 'Waves',

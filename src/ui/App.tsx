@@ -520,6 +520,15 @@ export function App() {
     triggerDownload(blob, `${baseName}-halftone.png`);
   };
 
+  // Print-ready knockout: hard-edged, one ink, transparent ground. Screen
+  // printers and DTF/DTG RIPs reject semi-transparent pixels — they come out
+  // as a grey halo — so this path never goes near the antialiased preview.
+  const onExportKnockoutPng = async () => {
+    if (!source || mode.kind !== 'patternScreen') return;
+    const blob = await client.renderPng({ ...params, transparent: true }, true);
+    triggerDownload(blob, `${baseName}-knockout.png`);
+  };
+
   const onExportSvg = async () => {
     if (!source || !svgEnabled) return;
     // Trace mode exports the SOTA Potrace SVG (same as the live preview).
@@ -885,7 +894,8 @@ export function App() {
         <CanvasPreview
           ref={setCanvas}
           hasSource={!!source}
-          isRaster={!!composition || mode.kind === 'raster' || mode.kind === 'paletteDither' || mode.kind === 'tonal'}
+          isRaster={!!composition || mode.kind === 'raster' || mode.kind === 'paletteDither'
+            || mode.kind === 'tonal' || (mode.kind === 'patternScreen' && !mode.pattern.softPreview)}
           sourceWidth={source?.width ?? 0}
           onSourceZoomChange={setSourceZoom}
           onUserZoom={resetIdle}
@@ -910,6 +920,12 @@ export function App() {
             <option value="production">SVG: production</option>
           </select>
           <button className="ghost" disabled={!bundleEnabled} onClick={onExportZip} title="Export composite + per-channel SVGs in a ZIP">ZIP</button>
+          {mode.kind === 'patternScreen' && (
+            <button className="ghost" disabled={!source} onClick={onExportKnockoutPng}
+              title="Print-ready PNG: one ink, transparent ground, no semi-transparent pixels">
+              Knockout
+            </button>
+          )}
           <button className="ghost" disabled={!svgEnabled} onClick={onExportSvg}>SVG</button>
           <button className="btn" disabled={!source} onClick={onExportPng}>Export PNG</button>
         </div>

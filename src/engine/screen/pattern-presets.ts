@@ -95,11 +95,14 @@ export const PATTERN_PRESETS: PatternPreset[] = [
     field: { kind: 'blueNoise', size: 64, seed: 1 }, cellSize: 1.6, angleDeg: 0,
   }),
   preset('petroglyph', 'Petroglyph', {
-    field: { kind: 'rd', pattern: 'squiggles', iterations: 6000, gridSize: 256, seed: 1, featureTexels: 9 },
-    cellSize: 4, angleDeg: 0,
+    // Grid size drives both the bake cost and how far the tile repeats. 160²
+    // lands at ~0.6s, in line with the rdContour mode that already ships;
+    // 256² looked marginally better and took 3s, which is a freeze, not a wait.
+    field: { kind: 'rd', pattern: 'squiggles', iterations: 3000, gridSize: 160, seed: 1, featureTexels: 9 },
+    cellSize: 6, angleDeg: 0,
   }),
   preset('pebbles', 'Pebbles', {
-    field: { kind: 'rd', pattern: 'pebbles', iterations: 4000, gridSize: 192, seed: 1, featureTexels: 8 },
+    field: { kind: 'rd', pattern: 'pebbles', iterations: 2500, gridSize: 128, seed: 1, featureTexels: 8 },
     cellSize: 7, angleDeg: 0,
   }),
   preset('pavers', 'Pavers', {

@@ -11,13 +11,18 @@ import { colorAssignments, colorRegionMask } from '../engine/layer/color-region'
 import type { LayeredComposition, Layer } from '../engine/layer/types';
 import { markSetToSvg, markSetToSvgGroups } from '../engine/export/svg';
 import { traceBinaryMask, loopToPathD, type TraceOptions } from '../engine/trace/trace';
+import { bakePatternField, renderPatternScreen } from '../engine/screen/pattern-field';
+import { adjust as applyAdjust } from '../engine/image/adjust';
+import {
+  patternToPaths, patternToSvg, coverageToKnockoutRgba,
+} from '../engine/export/pattern-output';
 import { potrace as potraceWasm, init as potraceInit } from 'esm-potrace-wasm';
 import { buildZip } from '../engine/export/zip';
 import { generateTexture } from '../engine/texture/recipes';
 import { findBundledTexture } from '../engine/texture/catalog';
 import { textureToCanvas, compositeTextureOverlay } from '../engine/texture/composite';
 import type { GrayTexture, TextureOverlay } from '../engine/texture/types';
-import type { RgbaImage } from '../engine/image/types';
+import type { RgbaImage, LumImage } from '../engine/image/types';
 import type { Output } from '../engine/output';
 import type { MarkSet } from '../engine/mark/types';
 import type { PipelineParams } from '../engine/pipeline';
@@ -300,6 +305,11 @@ ctx.onmessage = async (e: MessageEvent<Request>) => {
           post({ id: msg.id, kind: 'svg', xml, durationMs: performance.now() - t0 });
           break;
         }
+        if (msg.params.mode.kind === 'patternScreen') {
+          const xml = patternScreenSvg(source, msg.params, msg.params.mode);
+          post({ id: msg.id, kind: 'svg', xml, durationMs: performance.now() - t0 });
+          break;
+        }
         const out = runCachedPipeline(exportCache, source, msg.params);
         if (out.kind === 'traced') {
           const xml = tracedToSvg(out.regions, out.width, out.height, out.background, out.transparent);
@@ -323,7 +333,11 @@ ctx.onmessage = async (e: MessageEvent<Request>) => {
         const w = source.width;
         const h = source.height;
         const c = new OffscreenCanvas(w, h);
-        if (msg.params.composition) {
+        if (msg.knockout && msg.params.mode.kind === 'patternScreen') {
+          // Bypasses drawOutput entirely: the whole point is that no stage
+          // between the threshold and the file can introduce a partial alpha.
+          writeKnockoutPng(c, source, msg.params, msg.params.mode);
+        } else if (msg.params.composition) {
           await renderComposition(c, msg.params.composition, source);
         } else {
           const out = runCachedPipeline(exportCache, source, msg.params);
@@ -430,6 +444,51 @@ function tracedToSvg(
   }
   parts.push('</svg>');
   return parts.join('\n');
+}
+
+type PatternMode = Extract<import('../engine/pipeline').ModeKind, { kind: 'patternScreen' }>;
+
+// Luminance for the pattern path, with the same adjust the preview used.
+function patternLum(src: RgbaImage, params: PipelineParams): LumImage {
+  return applyAdjust(rgbaToLum(src), params.adjust);
+}
+
+function patternScreenSvg(src: RgbaImage, params: PipelineParams, mode: PatternMode): string {
+  const tile = exportCache.get('pattern-tile', JSON.stringify(mode.pattern.field), () =>
+    bakePatternField(mode.pattern.field),
+  );
+  const paths = patternToPaths(patternLum(src, params), tile, mode.pattern, mode.vector);
+  return patternToSvg(
+    paths, src.width, src.height,
+    params.foreground, params.background, params.transparent,
+  );
+}
+
+function writeKnockoutPng(
+  canvas: OffscreenCanvas, src: RgbaImage, params: PipelineParams, mode: PatternMode,
+): void {
+  const tile = exportCache.get('pattern-tile', JSON.stringify(mode.pattern.field), () =>
+    bakePatternField(mode.pattern.field),
+  );
+  const cov = renderPatternScreen(patternLum(src, params), tile, {
+    ...mode.pattern,
+    softPreview: false,
+  });
+  const rgba = coverageToKnockoutRgba(cov, hexToRgb255(params.foreground));
+  canvas.width = cov.width;
+  canvas.height = cov.height;
+  const ctx = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
+  const id = ctx.createImageData(cov.width, cov.height);
+  id.data.set(rgba);
+  ctx.putImageData(id, 0, 0);
+}
+
+function hexToRgb255(hex: string): { r: number; g: number; b: number } {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  const n = parseInt(full, 16);
+  if (!Number.isFinite(n)) return { r: 0, g: 0, b: 0 };
+  return { r: (n >> 16) & 0xff, g: (n >> 8) & 0xff, b: n & 0xff };
 }
 
 function drawOutput(canvas: OffscreenCanvas, out: Output, superSample = false): void {

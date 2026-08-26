@@ -7,7 +7,9 @@ export type Request =
   | { id: number; kind: 'process'; params: PipelineParams; previewMaxSide?: number }
   | { id: number; kind: 'render-thumb'; params: PipelineParams; size: number }
   | { id: number; kind: 'serialize-svg'; params: PipelineParams; opts: SvgOptions }
-  | { id: number; kind: 'render-png'; params: PipelineParams }
+  // `knockout` forces the pattern-screen print path: hard binary threshold,
+  // one ink, transparent ground, alpha strictly 0 or 255.
+  | { id: number; kind: 'render-png'; params: PipelineParams; knockout?: boolean }
   | { id: number; kind: 'export-zip'; params: PipelineParams; opts: SvgOptions; baseName: string }
   | { id: number; kind: 'set-user-texture'; textureId: string; bitmap: ImageBitmap }
   | { id: number; kind: 'drop-user-texture'; textureId: string }

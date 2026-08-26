@@ -3,7 +3,7 @@ import type { PreprocessParams } from '../engine/image/preprocess';
 import type { ModeKind } from '../engine/pipeline';
 import type { TextureOverlay } from '../engine/texture/types';
 
-export type PresetCategory = 'grid' | 'line' | 'wave' | 'stochastic' | 'color' | 'palette' | 'organic' | 'distress' | 'texture';
+export type PresetCategory = 'screen' | 'grid' | 'line' | 'wave' | 'stochastic' | 'color' | 'palette' | 'organic' | 'distress' | 'texture';
 
 export interface Preset {
   id: string;

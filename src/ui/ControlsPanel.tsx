@@ -7,6 +7,7 @@ import {
   defaultGridScreen,
   defaultHexScreen,
   defaultPaletteDitherMode,
+  defaultPatternScreenMode,
   defaultPoissonScreen,
   defaultRadialScreen,
   defaultRdContourMode,
@@ -28,6 +29,7 @@ import {
   type StrokeStyle,
 } from '../engine/pipeline';
 import { PATTERN_CATALOG, type PatternId } from '../engine/noise/reaction-diffusion';
+import { PATTERN_PRESETS, findPatternPreset } from '../engine/screen/pattern-presets';
 import { defaultDistress, type DistressMode, type DistressParams } from '../engine/mark/distress';
 import {
   defaultTextureOverlay,
@@ -89,7 +91,7 @@ interface Props {
 
 export type ToolView = 'mode' | 'adjust' | 'texture' | 'mask' | 'colors' | 'render';
 
-type ModeTag = 'raster' | 'vector' | 'cmyk' | 'spot' | 'paletteDither' | 'tonal' | 'rdContour' | 'trace';
+type ModeTag = 'raster' | 'vector' | 'patternScreen' | 'cmyk' | 'spot' | 'paletteDither' | 'tonal' | 'rdContour' | 'trace';
 type DitherTag = 'none' | 'threshold' | 'bayer' | 'floyd' | 'atkinson';
 
 export function ControlsPanel(props: Props) {
@@ -125,6 +127,7 @@ export function ControlsPanel(props: Props) {
     else if (tag === 'spot') setMode(defaultSpotMode());
     else if (tag === 'paletteDither') setMode(defaultPaletteDitherMode());
     else if (tag === 'tonal') setMode(defaultTonalMode());
+    else if (tag === 'patternScreen') setMode(defaultPatternScreenMode());
     else if (tag === 'trace') setMode(defaultTraceMode());
     else setMode(defaultRdContourMode());
   };
@@ -175,6 +178,7 @@ export function ControlsPanel(props: Props) {
           <select value={mode.kind} onChange={(e) => onModeChange(e.target.value as ModeTag)}>
             <option value="raster">Dither / threshold</option>
             <option value="vector">Vector halftone</option>
+            <option value="patternScreen">Pattern screen</option>
             <option value="cmyk">CMYK separation</option>
             <option value="spot">Spot color (duotone)</option>
             <option value="paletteDither">Palette dither</option>
@@ -213,6 +217,10 @@ export function ControlsPanel(props: Props) {
 
         {mode.kind === 'rdContour' && (
           <RdContourControls mode={mode} onChange={(m) => setMode(m)} />
+        )}
+
+        {mode.kind === 'patternScreen' && (
+          <PatternScreenControls mode={mode} onChange={(m) => setMode(m)} />
         )}
 
         {mode.kind === 'trace' && (
@@ -754,6 +762,105 @@ function RdContourControls({
         <input type="checkbox" checked={p.invert}
           onChange={(e) => set({ invert: e.target.checked })} />
         Invert tonal mapping
+      </label>
+    </>
+  );
+}
+
+function PatternScreenControls({
+  mode,
+  onChange,
+}: {
+  mode: Extract<ModeKind, { kind: 'patternScreen' }>;
+  onChange: (m: ModeKind) => void;
+}) {
+  const p = mode.pattern;
+  const v = mode.vector;
+  const setP = (next: Partial<typeof p>): void =>
+    onChange({ ...mode, pattern: { ...p, ...next } });
+  const setV = (next: Partial<typeof v>): void =>
+    onChange({ ...mode, vector: { ...v, ...next } });
+  const setShaping = (next: Partial<typeof p.shaping>): void =>
+    setP({ shaping: { ...p.shaping, ...next } });
+  const setWarp = (next: Partial<typeof p.warp>): void =>
+    setP({ warp: { ...p.warp, ...next } });
+
+  // Which preset, if any, the current params still match exactly.
+  const activePreset = PATTERN_PRESETS.find(
+    (x) => JSON.stringify(x.params) === JSON.stringify(p),
+  );
+
+  return (
+    <>
+      <p className="hint">
+        Compares every pixel against a rank-equalized threshold field, so tone
+        stays linear and the screen keeps structure end to end — dots through
+        the highlights, a checkerboard at 50%, holes in the shadows. Output is
+        binary, so PNG export has no semi-transparent pixels.
+      </p>
+      <div className="row">
+        <label>Preset</label>
+        <select value={activePreset?.id ?? ''}
+          onChange={(e) => {
+            const found = findPatternPreset(e.target.value);
+            if (found) onChange({ ...mode, pattern: structuredClone(found.params) });
+          }}>
+          {!activePreset && <option value="">Custom</option>}
+          {PATTERN_PRESETS.map((x) => (
+            <option key={x.id} value={x.id}>{x.name}</option>
+          ))}
+        </select>
+      </div>
+      <Slider label="Cell size" value={p.cellSize} min={1} max={40} step={0.5}
+        onChange={(val) => setP({ cellSize: val })} />
+      <Slider label="Angle" value={p.angleDeg} min={0} max={180} step={0.5}
+        onChange={(val) => setP({ angleDeg: val })} />
+      <p className="hint">
+        An axis-aligned screen (0°/90°) samples every cell at the same phase, so
+        tone quantizes — the reason print screens sit at 15/22.5/45/75°.
+      </p>
+
+      <h3>Ink response</h3>
+      <Slider label="Gamma" value={p.shaping.gamma} min={0.2} max={3} step={0.01}
+        onChange={(val) => setShaping({ gamma: val })} />
+      <Slider label="Solid below" value={p.shaping.solidAt} min={0} max={0.9} step={0.01}
+        onChange={(val) => setShaping({ solidAt: Math.min(val, p.shaping.dropAt - 0.01) })} />
+      <Slider label="Drop above" value={p.shaping.dropAt} min={0.1} max={1} step={0.01}
+        onChange={(val) => setShaping({ dropAt: Math.max(val, p.shaping.solidAt + 0.01) })} />
+      <label className="checkbox-row">
+        <input type="checkbox" checked={p.shaping.invert}
+          onChange={(e) => setShaping({ invert: e.target.checked })} />
+        Invert (negative)
+      </label>
+
+      <h3>Warp</h3>
+      <Slider label="Wave amount" value={p.warp.waveAmp} min={0} max={40} step={0.5}
+        onChange={(val) => setWarp({ waveAmp: val })} />
+      <Slider label="Wave scale" value={p.warp.waveFreq} min={0.002} max={0.08} step={0.001}
+        onChange={(val) => setWarp({ waveFreq: val })} />
+      <Slider label="Noise amount" value={p.warp.noiseAmp} min={0} max={40} step={0.5}
+        onChange={(val) => setWarp({ noiseAmp: val })} />
+      <Slider label="Noise scale" value={p.warp.noiseFreq} min={0.002} max={0.08} step={0.001}
+        onChange={(val) => setWarp({ noiseFreq: val })} />
+
+      <h3>Vector export</h3>
+      <p className="hint">
+        SVG export re-renders the screen at {v.supersample}× and traces that, so
+        curves stay smooth regardless of the source image's pixel grid.
+      </p>
+      <Slider label="Supersample" value={v.supersample} min={1} max={4} step={1}
+        onChange={(val) => setV({ supersample: val })} />
+      <Slider label="Simplify" value={v.simplify} min={0} max={3} step={0.1}
+        onChange={(val) => setV({ simplify: val })} />
+      <Slider label="Smoothing" value={v.smoothing} min={0} max={1} step={0.05}
+        onChange={(val) => setV({ smoothing: val })} />
+      <Slider label="Min feature (px²)" value={v.minFeature} min={0} max={40} step={0.5}
+        onChange={(val) => setV({ minFeature: val })} />
+
+      <label className="checkbox-row">
+        <input type="checkbox" checked={p.softPreview}
+          onChange={(e) => setP({ softPreview: e.target.checked })} />
+        Anti-aliased preview (print export stays hard-edged either way)
       </label>
     </>
   );

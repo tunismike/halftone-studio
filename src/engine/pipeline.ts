@@ -15,6 +15,7 @@ import { defaultRdScreenParams, type RdScreenParams } from './screen/reaction-di
 import { defaultStippleParams, type StippleParams } from './screen/stipple';
 import { defaultRdContourParams, type RdContourParams } from './mode/rd-contour';
 import { defaultPatternScreen, type PatternScreenParams } from './screen/pattern-field';
+import { defaultPatternVector, type PatternVectorParams } from './export/pattern-output';
 import { defaultTraceOptions } from './trace/trace';
 import type { TextureOverlay } from './texture/types';
 import type { MaskOverlay } from './mask/types';
@@ -123,6 +124,10 @@ export type ModeKind =
   | {
       kind: 'patternScreen';
       pattern: PatternScreenParams;
+      // Kept beside `pattern` rather than inside it: these only affect vector
+      // export, and folding them in would invalidate the raster cache on every
+      // simplify-tolerance nudge.
+      vector: PatternVectorParams;
     }
   | {
       kind: 'trace';
@@ -238,6 +243,7 @@ export function defaultPatternScreenMode(): ModeKind {
       warp: { ...defaultPatternScreen.warp },
       shaping: { ...defaultPatternScreen.shaping },
     },
+    vector: { ...defaultPatternVector },
   };
 }
 

@@ -11,6 +11,8 @@ import {
   type ModeKind,
 } from '../engine/pipeline';
 import { noWarp } from '../engine/screen/warp';
+import { PATTERN_PRESETS } from '../engine/screen/pattern-presets';
+import { defaultPatternVector } from '../engine/export/pattern-output';
 import type { Preset } from './types';
 
 const std = (mode: ModeKind, overrides: Partial<Preset> = {}): Omit<Preset, 'id' | 'name' | 'category'> => ({
@@ -37,7 +39,21 @@ function vector(
 }
 
 
+// Every pattern-screen preset is a gallery preset too. They share one source
+// of truth so the mode panel's preset list and the gallery can never drift.
+const PATTERN_SCREEN_PRESETS: Preset[] = PATTERN_PRESETS.map((p) => ({
+  id: `screen-${p.id}`,
+  name: p.name,
+  category: 'screen' as const,
+  ...std({
+    kind: 'patternScreen',
+    pattern: structuredClone(p.params),
+    vector: { ...defaultPatternVector },
+  }),
+}));
+
 export const BUILTIN_PRESETS: Preset[] = [
+  ...PATTERN_SCREEN_PRESETS,
   // ── Grid family ──────────────────────────────────────────────
   {
     id: 'grid-dot-0',

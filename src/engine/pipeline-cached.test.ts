@@ -4,7 +4,7 @@ import { runCachedPipeline } from './pipeline-cached';
 import { defaultAdjust } from './image/adjust';
 import {
   defaultVectorMode, defaultCmykMode, defaultSpotMode, defaultPaletteDitherMode,
-  defaultTonalMode, defaultRdContourMode, defaultTraceMode,
+  defaultTonalMode, defaultRdContourMode, defaultTraceMode, defaultPatternScreenMode,
   type ModeKind, type PipelineParams,
 } from './pipeline';
 import type { RgbaImage } from './image/types';
@@ -37,6 +37,33 @@ describe('runCachedPipeline — every mode produces valid output', () => {
     const out = runCachedPipeline(new Cache(), src, params({ kind: 'raster', dither: { kind: 'floyd' } }));
     expect(out.kind).toBe('raster');
     if (out.kind === 'raster') { expect(out.image.width).toBe(src.width); expect(out.image.height).toBe(src.height); }
+  });
+
+  it('pattern screen → field coverage at source size, carrying the ink', () => {
+    const out = runCachedPipeline(new Cache(), src, params(defaultPatternScreenMode()));
+    expect(out.kind).toBe('field');
+    if (out.kind === 'field') {
+      expect(out.coverage.width).toBe(src.width);
+      expect(out.coverage.height).toBe(src.height);
+      expect(out.ink).toBe('#000000');
+      // A gradient must produce a mix, not an all-on or all-off field.
+      let inked = 0;
+      for (let i = 0; i < out.coverage.data.length; i++) if (out.coverage.data[i] > 127) inked++;
+      expect(inked).toBeGreaterThan(0);
+      expect(inked).toBeLessThan(out.coverage.data.length);
+    }
+  });
+
+  it('pattern screen → tile cached across param edits', () => {
+    // The equalized tile depends only on the field kind, so re-rendering at a
+    // new cell size must not pay to bake it again.
+    const cache = new Cache();
+    const a = defaultPatternScreenMode();
+    runCachedPipeline(cache, src, params(a));
+    if (a.kind !== 'patternScreen') throw new Error('unreachable');
+    const b = { ...a, pattern: { ...a.pattern, cellSize: a.pattern.cellSize + 3 } };
+    const out = runCachedPipeline(cache, src, params(b));
+    expect(out.kind).toBe('field');
   });
 
   it('vector halftone → non-empty marks', () => {
