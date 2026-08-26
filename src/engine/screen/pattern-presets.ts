@@ -165,8 +165,12 @@ export const PATTERN_PRESETS: PatternPreset[] = [
     },
     cellSize: 11, angleDeg: 0,
   }),
+  // The Gray-Scott "reptile" regime sits on the boundary between spots and
+  // worms, so it packs round dots alongside short elongated ones — which is
+  // what the reference pebbles actually does. The pure spot regime is too
+  // even for it, and now has its own preset below.
   preset('pebbles', 'Pebbles', {
-    field: { kind: 'rd', pattern: 'pebbles', iterations: 2500, gridSize: 128, seed: 1, featureTexels: 8 },
+    field: { kind: 'rd', pattern: 'reptile', iterations: 2500, gridSize: 128, seed: 1, featureTexels: 8 },
     cellSize: 6, angleDeg: 0,
   }),
   preset('pavers', 'Pavers', {
@@ -184,6 +188,13 @@ export const PATTERN_PRESETS: PatternPreset[] = [
   preset('pointillism-2', 'Pointillism 2', {
     field: { kind: 'points', cells: 56, jitter: 1, sizeJitter: 0.4, seed: 23, hex: true, relax: 8 },
     cellSize: 10, angleDeg: 0,
+  }),
+  // Ours. A pure reaction-diffusion spot regime gives the most even dot
+  // scatter in the set — every dot the same size, spaced by the chemistry
+  // rather than by a lattice. It reads as a third pointillism, not as pebbles.
+  preset('pointillism-3', 'Pointillism 3', {
+    field: { kind: 'rd', pattern: 'pebbles', iterations: 2500, gridSize: 128, seed: 1, featureTexels: 8 },
+    cellSize: 6, angleDeg: 0,
   }),
 ];
 
