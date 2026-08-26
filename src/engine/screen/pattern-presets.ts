@@ -177,10 +177,16 @@ export const PATTERN_PRESETS: PatternPreset[] = [
   // and a heavier blur then clears the chatter that fine noise leaves behind.
   // So this runs fine noise (scale 24) under a strong blur rather than the
   // reverse.
+  //
+  // The amount stays low for a reason that is easy to miss: an RD spot regime
+  // spaces its features evenly, and roughening spends that evenness to buy
+  // size variation. Past ~0.3 neighbouring blobs start crowding each other and
+  // the paper between them pinches into thin slivers instead of holding an
+  // even gap, which reads as cheap long before the shapes themselves do.
   preset('pebbles', 'Pebbles', {
     field: {
       kind: 'rd', pattern: 'pebbles', iterations: 2500, gridSize: 128, seed: 1,
-      featureTexels: 8, roughen: { amount: 0.4, scale: 24, seed: 3 }, smooth: 1.5,
+      featureTexels: 8, roughen: { amount: 0.25, scale: 24, seed: 3 }, smooth: 1.5,
     },
     cellSize: 6, angleDeg: 0,
   }),
