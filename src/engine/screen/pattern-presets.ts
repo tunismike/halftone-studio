@@ -151,10 +151,10 @@ export const PATTERN_PRESETS: PatternPreset[] = [
   preset('petroglyph', 'Petroglyph', {
     field: {
       kind: 'rd', pattern: 'squiggles', iterations: 3000, gridSize: 160, seed: 1,
-      featureTexels: 9, roughen: { amount: 0.3, scale: 24, seed: 3 }, smooth: 0.75,
-      dash: { width: 0.46, scale: 24, seed: 7 },
+      featureTexels: 9, roughen: { amount: 0.35, scale: 36, seed: 3 }, smooth: 1.25,
+      dash: { width: 0.55, scale: 20, seed: 7 },
     },
-    cellSize: 4.5, angleDeg: 0,
+    cellSize: 7, angleDeg: 0,
     warp: { ...noPatternWarp, noiseAmp: 7, noiseFreq: 0.03, noiseSeed: 5 },
   }),
   // Ours. Short strokes placed independently and combined by nearest distance,
@@ -168,14 +168,19 @@ export const PATTERN_PRESETS: PatternPreset[] = [
   }),
   // The spot regime, then roughened and smoothed. Topology first: spots stay
   // separate at coverage where the neighbouring "reptile" regime would connect
-  // its features into a web, and the reference keeps distinct blobs. Roughen
-  // then varies their size and shape, and the blur rounds the outlines that
-  // roughening leaves ragged and breaks the thin necks it creates. Past about
-  // 0.4 roughen the blobs stop being blobs, so this sits under it.
+  // its features into a web, and the reference keeps distinct blobs.
+  //
+  // Roughen scale and blur radius have to move together. Roughening near the
+  // feature scale drags neighbouring blobs into each other, and no amount of
+  // blur separates them again — it only rounds the clump. Roughening finer
+  // than a feature varies each blob's size without reaching its neighbours,
+  // and a heavier blur then clears the chatter that fine noise leaves behind.
+  // So this runs fine noise (scale 24) under a strong blur rather than the
+  // reverse.
   preset('pebbles', 'Pebbles', {
     field: {
       kind: 'rd', pattern: 'pebbles', iterations: 2500, gridSize: 128, seed: 1,
-      featureTexels: 8, roughen: { amount: 0.35, scale: 16, seed: 3 }, smooth: 1,
+      featureTexels: 8, roughen: { amount: 0.4, scale: 24, seed: 3 }, smooth: 1.5,
     },
     cellSize: 6, angleDeg: 0,
   }),
