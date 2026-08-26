@@ -106,6 +106,27 @@ export type PatternFieldKind =
        * Applied before `dash`, so dashes inherit the roughened shapes.
        */
       roughen?: { amount: number; scale: number; seed: number };
+      /**
+       * Blur the field, in tile texels, before it gets thresholded.
+       *
+       * Roughening buys irregular shapes at the cost of ragged outlines,
+       * because the noise it mixes in carries detail far finer than the
+       * features. Smoothing the field afterwards is the classic blur-then-
+       * re-threshold move: the large-scale irregularity survives, the
+       * high-frequency chatter along each outline does not, and what comes out
+       * reads as flowing organic shapes rather than noisy ones. It also breaks
+       * thin necks — a blur pulls more background into a narrow bridge than
+       * into a blob's middle — which is what separates touching features into
+       * distinct rounded ones. Applied last, so it rounds the ends of dashes
+       * too.
+       *
+       * Measured in original tile texels, but the tile is doubled first: a
+       * whole-texel kernel on a 128-wide field is a third of a feature wide,
+       * far too blunt to steer. The kernel is still a whole number of texels
+       * on the doubled tile, so this lands on 0.5 steps — 0.75 and 1.0 give
+       * the same result.
+       */
+      smooth?: number;
     }
   // Worley/cellular. `edge: true` uses F2-F1, whose minima trace the cell
   // boundaries — a paver/crazed-tile look; `false` uses F1 for packed blobs.
@@ -277,6 +298,64 @@ export function equalizeTile(values: Float32Array): Float32Array {
     i = j;
   }
   return out;
+}
+
+// Toroidal 2x bilinear upsample, so the blur below has sub-texel resolution to
+// work at.
+function upsample2x(values: Float32Array, size: number): Float32Array {
+  const n = size * 2;
+  const out = new Float32Array(n * n);
+  for (let y = 0; y < n; y++) {
+    const sy = (y + 0.5) / 2 - 0.5;
+    const y0 = Math.floor(sy);
+    const ty = sy - y0;
+    const ya = ((y0 % size) + size) % size;
+    const yb = ((y0 + 1) % size + size) % size;
+    for (let x = 0; x < n; x++) {
+      const sx = (x + 0.5) / 2 - 0.5;
+      const x0 = Math.floor(sx);
+      const tx = sx - x0;
+      const xa = ((x0 % size) + size) % size;
+      const xb = ((x0 + 1) % size + size) % size;
+      const a = values[ya * size + xa] + (values[ya * size + xb] - values[ya * size + xa]) * tx;
+      const b = values[yb * size + xa] + (values[yb * size + xb] - values[yb * size + xa]) * tx;
+      out[y * n + x] = a + (b - a) * ty;
+    }
+  }
+  return out;
+}
+
+// Cyclic separable box blur, run three times to approximate a Gaussian.
+// Wrapping keeps the tile seamless — a clamped blur would darken its edges and
+// leave a visible seam every time the pattern repeats.
+function smoothTile(values: Float32Array, size: number, radius: number): Float32Array {
+  const r = Math.max(0, Math.round(radius));
+  if (r === 0) return values;
+  const width = r * 2 + 1;
+  let src = Float32Array.from(values);
+  let dst = new Float32Array(values.length);
+  for (let pass = 0; pass < 3; pass++) {
+    // horizontal
+    for (let y = 0; y < size; y++) {
+      const row = y * size;
+      for (let x = 0; x < size; x++) {
+        let sum = 0;
+        for (let k = -r; k <= r; k++) sum += src[row + ((x + k) % size + size) % size];
+        dst[row + x] = sum / width;
+      }
+    }
+    const swap1 = src; src = dst; dst = swap1;
+    // vertical
+    for (let x = 0; x < size; x++) {
+      for (let y = 0; y < size; y++) {
+        let sum = 0;
+        for (let k = -r; k <= r; k++) sum += src[(((y + k) % size + size) % size) * size + x];
+        dst[y * size + x] = sum / width;
+      }
+    }
+    const swap2 = src; src = dst; dst = swap2;
+  }
+  return src;
 }
 
 // Bake an analytic spot function over one period of the (u,v) unit torus.
@@ -534,10 +613,19 @@ export function bakePatternField(field: PatternFieldKind): PatternTile {
         }
         values = equalizeTile(out);
       }
+      // tileCells is a count of cells per tile, so it is independent of the
+      // resolution the tile happens to be stored at.
+      const tileCells = rd.size / Math.max(1, field.featureTexels);
+      let size = rd.size;
+      if (field.smooth && field.smooth > 0) {
+        values = upsample2x(values, size);
+        size *= 2;
+        values = equalizeTile(smoothTile(values, size, field.smooth * 2));
+      }
       return {
-        size: rd.size,
+        size,
         values,
-        tileCells: rd.size / Math.max(1, field.featureTexels),
+        tileCells,
         aspect: 1,
         smooth: true,
       };

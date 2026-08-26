@@ -151,7 +151,7 @@ export const PATTERN_PRESETS: PatternPreset[] = [
   preset('petroglyph', 'Petroglyph', {
     field: {
       kind: 'rd', pattern: 'squiggles', iterations: 3000, gridSize: 160, seed: 1,
-      featureTexels: 9, roughen: { amount: 0.3, scale: 24, seed: 3 },
+      featureTexels: 9, roughen: { amount: 0.3, scale: 24, seed: 3 }, smooth: 0.75,
       dash: { width: 0.46, scale: 24, seed: 7 },
     },
     cellSize: 4.5, angleDeg: 0,
@@ -166,14 +166,16 @@ export const PATTERN_PRESETS: PatternPreset[] = [
     },
     cellSize: 11, angleDeg: 0,
   }),
-  // The Gray-Scott "reptile" regime sits on the boundary between spots and
-  // worms, so it packs round dots alongside short elongated ones — which is
-  // what the reference pebbles actually does. The pure spot regime is too
-  // even for it, and now has its own preset below.
+  // The spot regime, then roughened and smoothed. Topology first: spots stay
+  // separate at coverage where the neighbouring "reptile" regime would connect
+  // its features into a web, and the reference keeps distinct blobs. Roughen
+  // then varies their size and shape, and the blur rounds the outlines that
+  // roughening leaves ragged and breaks the thin necks it creates. Past about
+  // 0.4 roughen the blobs stop being blobs, so this sits under it.
   preset('pebbles', 'Pebbles', {
     field: {
-      kind: 'rd', pattern: 'reptile', iterations: 2500, gridSize: 128, seed: 1,
-      featureTexels: 8, roughen: { amount: 0.35, scale: 16, seed: 3 },
+      kind: 'rd', pattern: 'pebbles', iterations: 2500, gridSize: 128, seed: 1,
+      featureTexels: 8, roughen: { amount: 0.35, scale: 16, seed: 3 }, smooth: 1,
     },
     cellSize: 6, angleDeg: 0,
   }),

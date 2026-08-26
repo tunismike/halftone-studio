@@ -800,3 +800,97 @@ describe('rd roughen', () => {
     expect(Array.from(a.values)).toEqual(Array.from(b.values));
   });
 });
+
+describe('rd smooth', () => {
+  const BASE = {
+    kind: 'rd', pattern: 'pebbles', iterations: 1200, gridSize: 96, seed: 1, featureTexels: 8,
+    roughen: { amount: 0.35, scale: 12, seed: 3 },
+  } as const;
+
+  function shape(field: PatternFieldKind, tone = 0.6): { ink: number; ratio: number; marks: number } {
+    const w = 240, h = 240;
+    const data = new Float32Array(w * h);
+    data.fill(tone);
+    const cov = renderPatternScreen({ width: w, height: h, data },
+      bakePatternField(field), params(field, { cellSize: 6, angleDeg: 0 }));
+    const mask = coverageToMask(cov);
+    let area = 0, perim = 0;
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const i = y * w + x;
+        if (!mask[i]) continue;
+        area++;
+        if (!mask[i - 1] || !mask[i + 1] || !mask[i - w] || !mask[i + w]) perim++;
+      }
+    }
+    const seen = new Uint8Array(mask.length);
+    let marks = 0;
+    for (let i = 0; i < mask.length; i++) {
+      if (!mask[i] || seen[i]) continue;
+      marks++;
+      const stack = [i];
+      seen[i] = 1;
+      while (stack.length) {
+        const c = stack.pop()!;
+        const cx = c % w, cy = (c / w) | 0;
+        for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]] as const) {
+          const nx = cx + dx, ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const k = ny * w + nx;
+          if (mask[k] && !seen[k]) { seen[k] = 1; stack.push(k); }
+        }
+      }
+    }
+    return { ink: area / (w * h), ratio: perim / Math.max(1, area), marks };
+  }
+
+  it('clears the chatter roughening leaves behind', () => {
+    // Two effects, both at matched ink since equalization pins that. The
+    // stronger one is consolidation: blurring closes the thin gaps and stray
+    // specks roughening produces, so the same ink resolves into fewer, more
+    // coherent marks. Outline length per unit ink drops too, but only a little
+    // — at these feature sizes perimeter is dominated by how small the features
+    // are, not by how ragged their edges look.
+    const rough = shape({ ...BASE });
+    const smoothed = shape({ ...BASE, smooth: 1 });
+    expect(smoothed.ink).toBeCloseTo(rough.ink, 1);
+    expect(smoothed.marks).toBeLessThan(rough.marks * 0.85);
+    expect(smoothed.ratio).toBeLessThan(rough.ratio * 0.98);
+  });
+
+  it('doubles tile resolution so the kernel has sub-texel reach', () => {
+    // A whole-texel kernel on a 96-wide field is a third of a feature across —
+    // too blunt to steer, which is why the tile is upsampled first.
+    const plain = bakePatternField({ ...BASE });
+    const smoothed = bakePatternField({ ...BASE, smooth: 1 });
+    expect(smoothed.size).toBe(plain.size * 2);
+    // Cells per tile is a count, not a resolution, so it must not change.
+    expect(smoothed.tileCells).toBe(plain.tileCells);
+  });
+
+  it('stays seamless across the tile wrap', () => {
+    // The blur wraps; a clamped one would darken the tile edges and show a
+    // seam everywhere the pattern repeats.
+    const field: PatternFieldKind = { ...BASE, smooth: 1.5 };
+    const w = 480, h = 480;
+    const data = new Float32Array(w * h);
+    data.fill(0.5);
+    const cov = renderPatternScreen({ width: w, height: h, data },
+      bakePatternField(field), params(field, { cellSize: 6, angleDeg: 0 }));
+    const bands: number[] = [];
+    for (let b = 0; b < 12; b++) {
+      let s = 0;
+      const y0 = Math.floor((b * h) / 12), y1 = Math.floor(((b + 1) * h) / 12);
+      for (let y = y0; y < y1; y++) for (let x = 0; x < w; x++) s += cov.data[y * w + x] / 255;
+      bands.push(s / (w * (y1 - y0)));
+    }
+    expect(Math.max(...bands) - Math.min(...bands)).toBeLessThan(0.06);
+  });
+
+  it('does not disturb tonal linearity', () => {
+    const field: PatternFieldKind = { ...BASE, smooth: 1 };
+    for (const tone of [0.3, 0.5, 0.7]) {
+      expect(shape(field, tone).ink).toBeCloseTo(1 - tone, 1);
+    }
+  });
+});
