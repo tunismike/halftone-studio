@@ -169,29 +169,17 @@ export const PATTERN_PRESETS: PatternPreset[] = [
   // Gray-Scott on the spot/worm boundary, tuned by feed/kill directly rather
   // than by a catalog name, then roughened and smoothed.
   //
-  // The boundary is where round blobs and elongated worms of the same width
+  // The boundary is where round blobs and long curved worms of the same width
   // coexist at one coverage, which is what the reference does. Neither named
-  // neighbour manages it: the pure spot regime's blobs can only merge in
-  // pairs, and a pair merging through a threshold grows its bridge from zero
-  // width, so the joins pinch into filaments instead of holding the stroke
-  // weight. "reptile" overshoots into a labyrinth. Worms that come from the
-  // regime rather than from a merge are full width along their length, and
-  // (0.0257, 0.0593) sets the ratio of blobs to worms where the reference
-  // has it.
+  // neighbour manages it: the spot regime's blobs can only merge in pairs, and
+  // a pair merging through a threshold grows its bridge from zero width, so
+  // the joins pinch to filaments instead of holding the stroke weight;
+  // "reptile" overshoots into a labyrinth. Worms that come from the regime
+  // rather than from a merge are full width along their length.
   //
-  // Roughen scale and blur radius have to move together. Roughening near the
-  // feature scale drags neighbouring blobs into each other, and no amount of
-  // blur separates them again — it only rounds the clump. Roughening finer
-  // than a feature varies each blob's size without reaching its neighbours,
-  // and a heavier blur then clears the chatter that fine noise leaves behind.
-  // So this runs fine noise (scale 24) under a strong blur rather than the
-  // reverse.
-  //
-  // The amount stays low for a reason that is easy to miss: an RD spot regime
-  // spaces its features evenly, and roughening spends that evenness to buy
-  // size variation. Past ~0.3 neighbouring blobs start crowding each other and
-  // the paper between them pinches into thin slivers instead of holding an
-  // even gap, which reads as cheap long before the shapes themselves do.
+  // A mark-based field was tried here and lost on exactly one point: its marks
+  // cannot run longer than their own lattice cell, so it has no answer for the
+  // long worms. It ships as "Organic Dots" below instead.
   preset('pebbles', 'Pebbles', {
     field: {
       kind: 'rd', pattern: 'reptile', fk: { F: 0.0257, k: 0.0593 },
@@ -199,6 +187,18 @@ export const PATTERN_PRESETS: PatternPreset[] = [
       featureTexels: 8, roughen: { amount: 0.25, scale: 24, seed: 3 }, smooth: 1.5,
     },
     cellSize: 6, angleDeg: 0,
+  }),
+  // Ours. Every mark's radius modulated by angle off its own hash, so each is
+  // an irregular blob — oval, bent, lopsided — while relaxation holds the
+  // spacing between centres even. Irregular shapes on regular centres, which
+  // is a distinctly different look from the regular-shapes-on-irregular-centres
+  // that a jittered halftone gives.
+  preset('organic-dots', 'Organic Dots', {
+    field: {
+      kind: 'points', cells: 30, jitter: 1, sizeJitter: 0.65, seed: 31,
+      hex: true, relax: 6, wobble: 0.4,
+    },
+    cellSize: 9, angleDeg: 0,
   }),
   preset('pavers', 'Pavers', {
     field: { kind: 'rings', cells: 24, jitter: 0.8, radius: 0.34, seed: 3, relax: 6 },

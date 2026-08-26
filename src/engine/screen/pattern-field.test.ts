@@ -142,6 +142,7 @@ const BAKED_FIELDS: PatternFieldKind[] = [
   { kind: 'rings', cells: 8, jitter: 0.5, radius: 0.34, seed: 3 },
   { kind: 'points', cells: 8, jitter: 0.3, sizeJitter: 0.3, seed: 11, hex: true },
   { kind: 'points', cells: 10, jitter: 1, sizeJitter: 0.3, seed: 11, hex: true, relax: 8 },
+  { kind: 'points', cells: 10, jitter: 1, sizeJitter: 0.4, seed: 11, hex: true, relax: 6, wobble: 0.45 },
   { kind: 'strokes', cells: 10, length: 1, lengthJitter: 0.6, spread: 0.7, bend: 0.6, bias: 0.35, seed: 11 },
 ];
 
@@ -948,5 +949,68 @@ describe('rd feed/kill override', () => {
       for (let i = 0; i < cov.data.length; i++) sum += cov.data[i] / 255;
       expect(sum / cov.data.length).toBeCloseTo(1 - tone, 1);
     }
+  });
+});
+
+describe('mark wobble', () => {
+  const BASE = {
+    kind: 'points', cells: 16, jitter: 1, sizeJitter: 0, seed: 31, hex: true, relax: 6,
+  } as const;
+
+  // Isoperimetric ratio: 1 for a circle, higher the less circular the shape.
+  function circularity(field: PatternFieldKind): number {
+    const w = 240, h = 240;
+    const data = new Float32Array(w * h);
+    data.fill(0.8);
+    const cov = renderPatternScreen({ width: w, height: h, data },
+      bakePatternField(field), params(field, { cellSize: 9, angleDeg: 0 }));
+    const mask = coverageToMask(cov);
+    const seen = new Uint8Array(mask.length);
+    const ratios: number[] = [];
+    for (let i = 0; i < mask.length; i++) {
+      if (!mask[i] || seen[i]) continue;
+      let area = 0, perim = 0, edge = false;
+      const stack = [i];
+      seen[i] = 1;
+      while (stack.length) {
+        const c = stack.pop()!;
+        area++;
+        const cx = c % w, cy = (c / w) | 0;
+        if (cx === 0 || cy === 0 || cx === w - 1 || cy === h - 1) edge = true;
+        let boundary = false;
+        for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]] as const) {
+          const nx = cx + dx, ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) { boundary = true; continue; }
+          const k = ny * w + nx;
+          if (!mask[k]) boundary = true;
+          else if (!seen[k]) { seen[k] = 1; stack.push(k); }
+        }
+        if (boundary) perim++;
+      }
+      if (!edge && area > 20) ratios.push((perim * perim) / (4 * Math.PI * area));
+    }
+    return ratios.reduce((a, b) => a + b, 0) / Math.max(1, ratios.length);
+  }
+
+  it('makes marks less circular', () => {
+    // Distance to a point is a circle by definition, so without wobble every
+    // mark is one. Modulating radius by angle is what buys shapes.
+    const round = circularity({ ...BASE, wobble: 0 });
+    const wobbly = circularity({ ...BASE, wobble: 0.5 });
+    expect(wobbly).toBeGreaterThan(round * 1.15);
+  });
+
+  it('gives each mark its own outline', () => {
+    // Phases come off each point's own hash, so two marks must not be
+    // congruent — a shared phase would read as a repeating stamp.
+    const a = bakePatternField({ ...BASE, wobble: 0.5, seed: 31 });
+    const b = bakePatternField({ ...BASE, wobble: 0.5, seed: 32 });
+    expect(Array.from(a.values)).not.toEqual(Array.from(b.values));
+  });
+
+  it('zero wobble is a no-op', () => {
+    const a = bakePatternField({ ...BASE });
+    const b = bakePatternField({ ...BASE, wobble: 0 });
+    expect(Array.from(a.values)).toEqual(Array.from(b.values));
   });
 });

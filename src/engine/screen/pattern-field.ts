@@ -150,6 +150,19 @@ export type PatternFieldKind =
       kind: 'points'; cells: number; jitter: number; sizeJitter: number; seed: number;
       hex?: boolean;
       /**
+       * Per-mark outline irregularity, 0..1.
+       *
+       * Distance to a point makes a circle, so the only irregularity a point
+       * field can otherwise offer is chaining — round dots strung together.
+       * That reads as dots-in-a-row, not as shapes. Modulating each mark's
+       * radius by angle instead, with harmonics phased off the point's own
+       * hash, makes every mark its own irregular blob while relaxation keeps
+       * the spacing between them even. Irregular shapes on regular centres is
+       * a different look from regular shapes on irregular centres, and it is
+       * the one that reads as organic.
+       */
+      wobble?: number;
+      /**
        * Repulsion passes over the point set. A jittered grid at high jitter
        * looks random but drops points from neighbouring cells right on top of
        * each other, and those pairs merge into worms instead of staying
@@ -512,6 +525,7 @@ function buildPointSet(
 function nearestFeature(
   u: number, v: number, ps: PointSet,
   bias: (nx: number, ny: number) => number,
+  wobble = 0, seed = 0,
 ): number {
   const { cells, xy, rowScale } = ps;
   const cu = u * cells;
@@ -528,7 +542,22 @@ function nearestFeature(
       // neighbourhood so the toroidal wrap is handled by the cell offsets.
       const ddx = xy[j] + (cellX + dx - nx) - cu;
       const ddy = (xy[j + 1] + (cellY + dy - ny) - cv) * rowScale;
-      const d = Math.sqrt(ddx * ddx + ddy * ddy) / Math.max(0.05, bias(nx, ny));
+      let r = Math.sqrt(ddx * ddx + ddy * ddy);
+      if (wobble > 0) {
+        // Radius as a function of angle, phased off this point's own hashes
+        // so no two marks share an outline. Only the low harmonics: the second
+        // stretches a mark into an oval at a random orientation and the third
+        // bends it, which is what an organic blob looks like. Bringing in
+        // higher ones cuts cusps into the outline and the marks read as spiky
+        // stars rather than as shapes.
+        const th = Math.atan2(ddy, ddx);
+        const shape = 1 + wobble * (
+          0.70 * Math.sin(2 * th + hash2(nx, ny, seed + 101) * TAU)
+          + 0.30 * Math.sin(3 * th + hash2(nx, ny, seed + 211) * TAU)
+        );
+        r /= shape < 0.25 ? 0.25 : shape;
+      }
+      const d = r / Math.max(0.05, bias(nx, ny));
       if (d < best) best = d;
     }
   }
@@ -675,7 +704,8 @@ export function bakePatternField(field: PatternFieldKind): PatternTile {
       const ps = buildPointSet(field.cells, field.jitter, field.seed, !!field.hex, field.relax ?? 0);
       const values = bakeTorus(TILE_PROC, (u, v) =>
         nearestFeature(u, v, ps,
-          (nx, ny) => 1 - field.sizeJitter * hash2(nx, ny, field.seed + 4523)),
+          (nx, ny) => 1 - field.sizeJitter * hash2(nx, ny, field.seed + 4523),
+          field.wobble ?? 0, field.seed),
       );
       return {
         size: TILE_PROC, values: equalizeTile(values), tileCells: field.cells,
