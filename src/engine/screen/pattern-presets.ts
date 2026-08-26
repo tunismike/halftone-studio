@@ -193,10 +193,15 @@ export const PATTERN_PRESETS: PatternPreset[] = [
   // spacing between centres even. Irregular shapes on regular centres, which
   // is a distinctly different look from the regular-shapes-on-irregular-centres
   // that a jittered halftone gives.
+  //
+  // Size jitter stays near zero deliberately. All the variety is in shape:
+  // uniform size and spacing is what stops an irregular screen reading as
+  // scattered rubbish, and spending it on size buys nothing shape has not
+  // already given.
   preset('organic-dots', 'Organic Dots', {
     field: {
-      kind: 'points', cells: 30, jitter: 1, sizeJitter: 0.65, seed: 31,
-      hex: true, relax: 6, wobble: 0.4,
+      kind: 'points', cells: 30, jitter: 1, sizeJitter: 0.12, seed: 31,
+      hex: true, relax: 8, wobble: 0.85,
     },
     cellSize: 9, angleDeg: 0,
   }),

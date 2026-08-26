@@ -160,6 +160,11 @@ export type PatternFieldKind =
        * the spacing between them even. Irregular shapes on regular centres is
        * a different look from regular shapes on irregular centres, and it is
        * the one that reads as organic.
+       *
+       * This is the maximum strength, drawn down per mark: a single strength
+       * for all of them turns every mark into an oval, which is mechanical in
+       * its own way. Varying it leaves some marks nearly round and stretches
+       * others, so shape varies while size and spacing stay uniform.
        */
       wobble?: number;
       /**
@@ -543,7 +548,12 @@ function nearestFeature(
       const ddx = xy[j] + (cellX + dx - nx) - cu;
       const ddy = (xy[j + 1] + (cellY + dy - ny) - cv) * rowScale;
       let r = Math.sqrt(ddx * ddx + ddy * ddy);
-      if (wobble > 0) {
+      // Per-mark strength, not just per-mark phase. A single strength makes
+      // every mark an oval, which is uniform in a different and equally
+      // mechanical way; drawing it per mark leaves some nearly round and
+      // stretches others, so shape varies while size and spacing do not.
+      const amp = wobble > 0 ? wobble * hash2(nx, ny, seed + 401) : 0;
+      if (amp > 0) {
         // Radius as a function of angle, phased off this point's own hashes
         // so no two marks share an outline. Only the low harmonics: the second
         // stretches a mark into an oval at a random orientation and the third
@@ -551,7 +561,7 @@ function nearestFeature(
         // higher ones cuts cusps into the outline and the marks read as spiky
         // stars rather than as shapes.
         const th = Math.atan2(ddy, ddx);
-        const shape = 1 + wobble * (
+        const shape = 1 + amp * (
           0.70 * Math.sin(2 * th + hash2(nx, ny, seed + 101) * TAU)
           + 0.30 * Math.sin(3 * th + hash2(nx, ny, seed + 211) * TAU)
         );
