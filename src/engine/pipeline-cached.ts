@@ -32,7 +32,7 @@ import { reactionDiffusionScreen } from './screen/reaction-diffusion-screen';
 import { runRdContour, rdContourToMarkSet } from './mode/rd-contour';
 import {
   bakePatternField, renderPatternScreen,
-  type CoverageMap, type PatternTile,
+  type CoverageMap, type PatternTile, type PatternScreenParams,
 } from './screen/pattern-field';
 import { KERNELS } from './dither/kernels';
 import type { MarkGroup, MarkSet, Mark } from './mark/types';
@@ -82,20 +82,72 @@ function runPatternScreen(
   mode: PatternScreenMode,
 ): Output {
   const ps = mode.pattern;
-  const lum = getLum(cache, src, srcKey, p.adjust);
   // The equalized tile depends only on the field kind — not on cell size,
-  // angle, or the source — so one bake serves every edit of those.
+  // angle, or the source — so one bake serves every edit of those, and every
+  // ink shares it.
   const tile = cache.get<PatternTile>('pattern-tile', JSON.stringify(ps.field), () =>
     bakePatternField(ps.field),
   );
-  const key = `${src.width}x${src.height}|${srcKey}|${JSON.stringify(p.adjust)}|${JSON.stringify(ps)}`;
-  const coverage = cache.get<CoverageMap>('pattern-cov', key, () =>
-    renderPatternScreen(lum, tile, ps),
-  );
+  const adjKey = `${src.width}x${src.height}|${srcKey}|${JSON.stringify(p.adjust)}`;
+  const inks = mode.inks ?? { kind: 'mono' as const };
+
+  // Screen one separation. `tone` is luminance-shaped: 0 lays full ink.
+  const screen = (
+    id: string, tone: LumImage, angleDeg: number, scale: number,
+  ): CoverageMap => {
+    const params: PatternScreenParams = {
+      ...ps,
+      angleDeg,
+      cellSize: Math.max(0.5, ps.cellSize * scale),
+    };
+    return cache.get<CoverageMap>(`pattern-cov:${id}`,
+      `${adjKey}|${JSON.stringify(params)}`,
+      () => renderPatternScreen(tone, tile, params));
+  };
+
+  const layers: Array<{ coverage: CoverageMap; ink: string }> = [];
+
+  if (inks.kind === 'mono') {
+    const lum = getLum(cache, src, srcKey, p.adjust);
+    layers.push({ coverage: screen('mono', lum, ps.angleDeg, 1), ink: p.foreground });
+  } else if (inks.kind === 'cmyk') {
+    const sep = cache.get<CmykSeparation>('cmyk', srcKey, () => rgbaToCmyk(src));
+    for (const ch of inks.channels) {
+      if (!ch.enabled) continue;
+      // invertWithAdjust turns an ink-amount channel into the luminance shape
+      // the screen expects, applying the same tone controls as mono does.
+      const tone = cache.get<LumImage>(`ink-adj:${ch.key}`, adjKey, () =>
+        invertWithAdjust(pickCmykChannel(sep, ch.key), p.adjust),
+      );
+      layers.push({
+        coverage: screen(`cmyk:${ch.key}`, tone, ch.angleDeg, ch.scale),
+        ink: ch.color,
+      });
+    }
+  } else {
+    for (let i = 0; i < inks.channels.length; i++) {
+      const ch = inks.channels[i];
+      if (!ch.enabled) continue;
+      const targetKey = `${srcKey}|${ch.color}`;
+      const ink = cache.get<LumImage>(`spot-ink:${i}`, targetKey, () => {
+        const { r, g, b } = hexToRgb(ch.color);
+        return rgbaToSpot(src, { targetR: r, targetG: g, targetB: b });
+      });
+      const tone = cache.get<LumImage>(`spot-ink-adj:${i}`, `${targetKey}|${adjKey}`, () =>
+        invertWithAdjust(ink, p.adjust),
+      );
+      layers.push({
+        coverage: screen(`spot:${i}`, tone, ch.angleDeg, ch.scale),
+        ink: ch.color,
+      });
+    }
+  }
+
   return {
     kind: 'field',
-    coverage,
-    ink: p.foreground,
+    layers,
+    width: src.width,
+    height: src.height,
     background: p.background,
     transparent: p.transparent,
   };

@@ -5,6 +5,7 @@ import { defaultAdjust } from './image/adjust';
 import {
   defaultVectorMode, defaultCmykMode, defaultSpotMode, defaultPaletteDitherMode,
   defaultTonalMode, defaultRdContourMode, defaultTraceMode, defaultPatternScreenMode,
+  defaultPatternCmyk,
   type ModeKind, type PipelineParams,
 } from './pipeline';
 import type { RgbaImage } from './image/types';
@@ -39,19 +40,52 @@ describe('runCachedPipeline — every mode produces valid output', () => {
     if (out.kind === 'raster') { expect(out.image.width).toBe(src.width); expect(out.image.height).toBe(src.height); }
   });
 
-  it('pattern screen → field coverage at source size, carrying the ink', () => {
+  it('pattern screen → one ink layer at source size', () => {
     const out = runCachedPipeline(new Cache(), src, params(defaultPatternScreenMode()));
     expect(out.kind).toBe('field');
     if (out.kind === 'field') {
-      expect(out.coverage.width).toBe(src.width);
-      expect(out.coverage.height).toBe(src.height);
-      expect(out.ink).toBe('#000000');
+      expect(out.layers).toHaveLength(1);
+      expect(out.width).toBe(src.width);
+      expect(out.height).toBe(src.height);
+      expect(out.layers[0].ink).toBe('#000000');
+      const cov = out.layers[0].coverage;
+      expect(cov.width).toBe(src.width);
       // A gradient must produce a mix, not an all-on or all-off field.
       let inked = 0;
-      for (let i = 0; i < out.coverage.data.length; i++) if (out.coverage.data[i] > 127) inked++;
+      for (let i = 0; i < cov.data.length; i++) if (cov.data[i] > 127) inked++;
       expect(inked).toBeGreaterThan(0);
-      expect(inked).toBeLessThan(out.coverage.data.length);
+      expect(inked).toBeLessThan(cov.data.length);
     }
+  });
+
+  it('pattern screen → one layer per enabled ink, each its own colour', () => {
+    // The whole point of colour separation: a luminance channel cannot tell
+    // saturated hues apart, so each ink has to be screened from its own
+    // separation at its own angle.
+    const mode = defaultPatternScreenMode();
+    if (mode.kind !== 'patternScreen') throw new Error('unreachable');
+    const cmyk = { ...mode, inks: defaultPatternCmyk() };
+    const out = runCachedPipeline(new Cache(), src, params(cmyk));
+    expect(out.kind).toBe('field');
+    if (out.kind !== 'field') return;
+    expect(out.layers).toHaveLength(4);
+    expect(out.layers.map((l) => l.ink)).toEqual(['#00aaee', '#e6008c', '#ffd000', '#111111']);
+    // The separations must actually differ — identical layers would mean the
+    // colour never reached the screen.
+    const sig = (i: number) => Array.from(out.layers[i].coverage.data).join(',');
+    expect(sig(0)).not.toEqual(sig(1));
+    expect(sig(1)).not.toEqual(sig(2));
+  });
+
+  it('pattern screen → disabled inks are dropped', () => {
+    const mode = defaultPatternScreenMode();
+    if (mode.kind !== 'patternScreen') throw new Error('unreachable');
+    const inks = defaultPatternCmyk();
+    if (inks.kind !== 'cmyk') throw new Error('unreachable');
+    inks.channels[0].enabled = false;
+    const out = runCachedPipeline(new Cache(), src, params({ ...mode, inks }));
+    if (out.kind !== 'field') throw new Error('expected field');
+    expect(out.layers).toHaveLength(3);
   });
 
   it('pattern screen → tile cached across param edits', () => {

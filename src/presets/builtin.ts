@@ -13,6 +13,7 @@ import {
 import { noWarp } from '../engine/screen/warp';
 import { PATTERN_PRESETS } from '../engine/screen/pattern-presets';
 import { defaultPatternVector } from '../engine/export/pattern-output';
+import { defaultPatternInks } from '../engine/pipeline';
 import type { Preset } from './types';
 
 const std = (mode: ModeKind, overrides: Partial<Preset> = {}): Omit<Preset, 'id' | 'name' | 'category'> => ({
@@ -48,6 +49,7 @@ const PATTERN_SCREEN_PRESETS: Preset[] = PATTERN_PRESETS.map((p) => ({
   ...std({
     kind: 'patternScreen',
     pattern: structuredClone(p.params),
+    inks: { ...defaultPatternInks },
     vector: { ...defaultPatternVector },
   }),
 }));

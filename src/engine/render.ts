@@ -48,42 +48,68 @@ function stampDiscsToCanvas(
   return true;
 }
 
-// Composite a pattern-screen coverage map: one ink over the background, with
-// coverage as alpha. In hard (knockout) mode coverage is only 0 or 255, so
-// every pixel lands exactly on background or exactly on ink — no intermediate
+// Composite pattern-screen ink layers.
+//
+// Inks multiply rather than paint over each other: cyan over yellow is green,
+// not yellow. Compositing with `over` would just show whichever separation
+// happened to be drawn last, which is the difference between a colour halftone
+// and a stack of coloured stencils.
+//
+// In hard (knockout) mode a single layer's coverage is only 0 or 255, so every
+// pixel lands exactly on the background or exactly on the ink — no intermediate
 // alpha is ever written, which is the whole point of the mode.
 export function renderCoverageToCanvas(
-  cov: { width: number; height: number; data: Uint8Array },
-  ink: string, background: string, transparent: boolean, canvas: AnyCanvas,
+  layers: Array<{ coverage: { width: number; height: number; data: Uint8Array }; ink: string }>,
+  width: number, height: number,
+  background: string, transparent: boolean, canvas: AnyCanvas,
 ): void {
-  const { width, height, data } = cov;
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d') as
     | CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
   if (!ctx) return;
-  const fg = HEX_RE.test(ink.trim()) ? hexToRgb(ink) : { r: 0, g: 0, b: 0 };
-  const fr = Math.round(fg.r * 255), fgn = Math.round(fg.g * 255), fb = Math.round(fg.b * 255);
   const opaque = !transparent && background !== 'none';
-  const bg = opaque && HEX_RE.test(background.trim())
-    ? hexToRgb(background)
-    : { r: 1, g: 1, b: 1 };
-  const br = Math.round(bg.r * 255), bgn = Math.round(bg.g * 255), bb = Math.round(bg.b * 255);
+  const bg = opaque && HEX_RE.test(background.trim()) ? hexToRgb(background) : { r: 1, g: 1, b: 1 };
   const id = ctx.createImageData(width, height);
   const out = id.data;
-  for (let i = 0, j = 0; i < data.length; i++, j += 4) {
-    const a = data[i];
+  const n = width * height;
+
+  // Accumulate in linear 0..1 per channel, starting from the paper.
+  const r = new Float32Array(n);
+  const g = new Float32Array(n);
+  const b = new Float32Array(n);
+  r.fill(bg.r); g.fill(bg.g); b.fill(bg.b);
+  const alpha = new Float32Array(n);
+
+  for (const layer of layers) {
+    const ink = HEX_RE.test(layer.ink.trim()) ? hexToRgb(layer.ink) : { r: 0, g: 0, b: 0 };
+    const cov = layer.coverage.data;
+    for (let i = 0; i < n; i++) {
+      const a = cov[i] / 255;
+      if (a === 0) continue;
+      r[i] *= 1 - a * (1 - ink.r);
+      g[i] *= 1 - a * (1 - ink.g);
+      b[i] *= 1 - a * (1 - ink.b);
+      // Coverage unions across inks: paper shows only where no ink landed.
+      alpha[i] = alpha[i] + a - alpha[i] * a;
+    }
+  }
+
+  for (let i = 0, j = 0; i < n; i++, j += 4) {
     if (opaque) {
-      const t = a / 255;
-      out[j] = br + (fr - br) * t;
-      out[j + 1] = bgn + (fgn - bgn) * t;
-      out[j + 2] = bb + (fb - bb) * t;
+      out[j] = Math.round(r[i] * 255);
+      out[j + 1] = Math.round(g[i] * 255);
+      out[j + 2] = Math.round(b[i] * 255);
       out[j + 3] = 255;
     } else {
-      out[j] = fr;
-      out[j + 1] = fgn;
-      out[j + 2] = fb;
-      out[j + 3] = a;
+      // Un-multiply against the notional white paper so the ink keeps its
+      // colour where coverage is partial.
+      const a = alpha[i];
+      if (a <= 0) { out[j] = out[j + 1] = out[j + 2] = out[j + 3] = 0; continue; }
+      out[j] = Math.round(Math.min(1, Math.max(0, 1 - (1 - r[i]) / a)) * 255);
+      out[j + 1] = Math.round(Math.min(1, Math.max(0, 1 - (1 - g[i]) / a)) * 255);
+      out[j + 2] = Math.round(Math.min(1, Math.max(0, 1 - (1 - b[i]) / a)) * 255);
+      out[j + 3] = Math.round(a * 255);
     }
   }
   ctx.putImageData(id, 0, 0);

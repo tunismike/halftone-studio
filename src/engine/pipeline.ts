@@ -77,6 +77,42 @@ export type PaletteAlgorithm =
   | { kind: 'ordered-bluenoise'; size: number; amplitude: number }
   | { kind: 'knuth' };
 
+/**
+ * Which inks a pattern screen lays down.
+ *
+ * `mono` screens luminance into one ink. Anything colour has to separate
+ * first and screen each ink at its own angle, or the hues collapse into each
+ * other on the way to a single channel.
+ */
+export type PatternInks =
+  | { kind: 'mono' }
+  | { kind: 'cmyk'; channels: ChannelConfig[] }
+  | { kind: 'spot'; channels: SpotChannel[] };
+
+export const defaultPatternInks: PatternInks = { kind: 'mono' };
+
+export function defaultPatternCmyk(): PatternInks {
+  return {
+    kind: 'cmyk',
+    channels: [
+      { key: 'C', enabled: true, angleDeg: 15, scale: 1, color: '#00aaee' },
+      { key: 'M', enabled: true, angleDeg: 75, scale: 1, color: '#e6008c' },
+      { key: 'Y', enabled: true, angleDeg: 0, scale: 1, color: '#ffd000' },
+      { key: 'K', enabled: true, angleDeg: 45, scale: 1, color: '#111111' },
+    ],
+  };
+}
+
+export function defaultPatternSpot(): PatternInks {
+  return {
+    kind: 'spot',
+    channels: [
+      { name: 'ink-1', color: '#1d4ed8', enabled: true, angleDeg: 45, scale: 1 },
+      { name: 'ink-2', color: '#f59e0b', enabled: true, angleDeg: 15, scale: 1 },
+    ],
+  };
+}
+
 export type ModeKind =
   | { kind: 'raster'; dither: DitherKind }
   | {
@@ -124,6 +160,8 @@ export type ModeKind =
   | {
       kind: 'patternScreen';
       pattern: PatternScreenParams;
+      /** Which inks to lay down. Separation happens before screening. */
+      inks: PatternInks;
       // Kept beside `pattern` rather than inside it: these only affect vector
       // export, and folding them in would invalidate the raster cache on every
       // simplify-tolerance nudge.
@@ -250,6 +288,7 @@ export function defaultPatternScreenMode(): ModeKind {
       warp: { ...defaultPatternScreen.warp },
       shaping: { ...defaultPatternScreen.shaping },
     },
+    inks: { ...defaultPatternInks },
     vector: { ...defaultPatternVector },
   };
 }

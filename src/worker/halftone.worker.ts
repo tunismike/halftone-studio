@@ -13,9 +13,8 @@ import { markSetToSvg, markSetToSvgGroups } from '../engine/export/svg';
 import { traceBinaryMask, loopToPathD, type TraceOptions } from '../engine/trace/trace';
 import { bakePatternField, renderPatternScreen } from '../engine/screen/pattern-field';
 import { adjust as applyAdjust } from '../engine/image/adjust';
-import {
-  patternToPaths, patternToSvg, coverageToKnockoutRgba,
-} from '../engine/export/pattern-output';
+import { patternToPaths, coverageToKnockoutRgba } from '../engine/export/pattern-output';
+import { rgbaToCmyk, rgbaToSpot } from '../engine/color/cmyk';
 import { potrace as potraceWasm, init as potraceInit } from 'esm-potrace-wasm';
 import { buildZip } from '../engine/export/zip';
 import { generateTexture } from '../engine/texture/recipes';
@@ -457,11 +456,83 @@ function patternScreenSvg(src: RgbaImage, params: PipelineParams, mode: PatternM
   const tile = exportCache.get('pattern-tile', JSON.stringify(mode.pattern.field), () =>
     bakePatternField(mode.pattern.field),
   );
-  const paths = patternToPaths(patternLum(src, params), tile, mode.pattern, mode.vector);
-  return patternToSvg(
-    paths, src.width, src.height,
-    params.foreground, params.background, params.transparent,
-  );
+  // One traced group per ink, each screened from its own separation at its own
+  // angle — the same structure the CMYK and spot mark modes emit, so the SVG
+  // opens with editable per-ink layers rather than one flattened path.
+  const seps = patternSeparations(src, params, mode);
+  const groups = seps.map((sep) => {
+    const paths = patternToPaths(sep.tone, tile,
+      { ...mode.pattern, angleDeg: sep.angleDeg, cellSize: Math.max(0.5, mode.pattern.cellSize * sep.scale) },
+      mode.vector);
+    return { name: sep.name, ink: sep.ink, paths };
+  });
+  return patternLayersToSvg(groups, src.width, src.height, params.background, params.transparent);
+}
+
+function patternLayersToSvg(
+  groups: Array<{ name: string; ink: string; paths: { d: string; width: number; height: number } }>,
+  outWidth: number, outHeight: number, background: string, transparent: boolean,
+): string {
+  const first = groups[0]?.paths;
+  const vbW = first?.width ?? outWidth;
+  const vbH = first?.height ?? outHeight;
+  const parts = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${outWidth}" height="${outHeight}" ` +
+      `viewBox="0 0 ${vbW} ${vbH}">`,
+  ];
+  if (!transparent && background !== 'none') {
+    parts.push(`<rect width="${vbW}" height="${vbH}" fill="${background}"/>`);
+  }
+  for (const g of groups) {
+    if (!g.paths.d) continue;
+    // Inks multiply: cyan over yellow is green, not yellow.
+    const blend = groups.length > 1 ? ' style="mix-blend-mode:multiply"' : '';
+    parts.push(`<g id="${svgEsc(g.name)}" fill="${g.ink}" fill-rule="evenodd"${blend}>` +
+      `<path d="${g.paths.d}"/></g>`);
+  }
+  parts.push('</svg>');
+  return parts.join('\n');
+}
+
+// The per-ink tone images a pattern screen threshold against, in output order.
+function patternSeparations(
+  src: RgbaImage, params: PipelineParams, mode: PatternMode,
+): Array<{ name: string; ink: string; tone: LumImage; angleDeg: number; scale: number }> {
+  const inks = mode.inks ?? { kind: 'mono' as const };
+  const adj = (l: LumImage): LumImage => {
+    const out = new Float32Array(l.data.length);
+    const a = params.adjust;
+    const cF = (1 + a.contrast) / Math.max(1e-6, 1 - a.contrast);
+    const invG = 1 / Math.max(1e-6, a.gamma);
+    for (let i = 0; i < l.data.length; i++) {
+      let v = l.data[i] - a.brightness;
+      v = (v - 0.5) * cF + 0.5;
+      v = v <= 0 ? 0 : v >= 1 ? 1 : Math.pow(v, invG);
+      out[i] = 1 - (a.invert ? 1 - v : v);
+    }
+    return { width: l.width, height: l.height, data: out };
+  };
+  if (inks.kind === 'mono') {
+    return [{ name: 'ink', ink: params.foreground, tone: patternLum(src, params),
+      angleDeg: mode.pattern.angleDeg, scale: 1 }];
+  }
+  if (inks.kind === 'cmyk') {
+    const sep = rgbaToCmyk(src);
+    const pick = (k: string): LumImage =>
+      k === 'C' ? sep.c : k === 'M' ? sep.m : k === 'Y' ? sep.y : sep.k;
+    return inks.channels.filter((c) => c.enabled).map((c) => ({
+      name: c.key, ink: c.color, tone: adj(pick(c.key)), angleDeg: c.angleDeg, scale: c.scale,
+    }));
+  }
+  return inks.channels.filter((c) => c.enabled).map((c) => {
+    const h = c.color.replace('#', '');
+    const n = parseInt(h.length === 3 ? h.split('').map((x) => x + x).join('') : h, 16);
+    return {
+      name: c.name, ink: c.color,
+      tone: adj(rgbaToSpot(src, { targetR: (n >> 16) & 0xff, targetG: (n >> 8) & 0xff, targetB: n & 0xff })),
+      angleDeg: c.angleDeg, scale: c.scale,
+    };
+  });
 }
 
 function writeKnockoutPng(
@@ -470,17 +541,28 @@ function writeKnockoutPng(
   const tile = exportCache.get('pattern-tile', JSON.stringify(mode.pattern.field), () =>
     bakePatternField(mode.pattern.field),
   );
-  const cov = renderPatternScreen(patternLum(src, params), tile, {
-    ...mode.pattern,
-    softPreview: false,
-  });
-  const rgba = coverageToKnockoutRgba(cov, hexToRgb255(params.foreground));
-  canvas.width = cov.width;
-  canvas.height = cov.height;
-  const ctx = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
-  const id = ctx.createImageData(cov.width, cov.height);
-  id.data.set(rgba);
-  ctx.putImageData(id, 0, 0);
+  const seps = patternSeparations(src, params, mode);
+  const layers = seps.map((sep) => ({
+    coverage: renderPatternScreen(sep.tone, tile, {
+      ...mode.pattern, angleDeg: sep.angleDeg,
+      cellSize: Math.max(0.5, mode.pattern.cellSize * sep.scale),
+      softPreview: false,
+    }),
+    ink: sep.ink,
+  }));
+  if (layers.length === 1) {
+    const rgba = coverageToKnockoutRgba(layers[0].coverage, hexToRgb255(layers[0].ink));
+    canvas.width = layers[0].coverage.width;
+    canvas.height = layers[0].coverage.height;
+    const ctx = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
+    const id = ctx.createImageData(canvas.width, canvas.height);
+    id.data.set(rgba);
+    ctx.putImageData(id, 0, 0);
+    return;
+  }
+  // Multi-ink: every separation is hard, so their union is hard too — alpha
+  // stays strictly 0 or 255 while the inks multiply where they overlap.
+  renderCoverageToCanvas(layers, src.width, src.height, params.background, true, canvas);
 }
 
 function hexToRgb255(hex: string): { r: number; g: number; b: number } {
@@ -503,7 +585,7 @@ function drawOutput(canvas: OffscreenCanvas, out: Output, superSample = false): 
   } else if (out.kind === 'indexed') {
     renderIndexedToCanvas(out.image, canvas);
   } else if (out.kind === 'field') {
-    renderCoverageToCanvas(out.coverage, out.ink, out.background, out.transparent, canvas);
+    renderCoverageToCanvas(out.layers, out.width, out.height, out.background, out.transparent, canvas);
   } else if (out.kind === 'traced') {
     renderTracedToCanvas(out.regions, out.width, out.height, out.background, out.transparent, canvas);
   } else if (superSample) {

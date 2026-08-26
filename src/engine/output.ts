@@ -8,12 +8,18 @@ export type Output =
   | { kind: 'raster'; image: LumImage }
   | { kind: 'indexed'; image: IndexedImage }
   | { kind: 'marks'; set: MarkSet }
-  // Pattern screens: per-pixel ink coverage in one ink. Hard (knockout) output
-  // carries only 0/255; soft preview carries antialiased values.
+  // Pattern screens: per-pixel ink coverage, one map per ink. Hard (knockout)
+  // output carries only 0/255; soft preview carries antialiased values.
+  //
+  // Colour work needs one layer per ink screened at its own angle, the same way
+  // the mark-based CMYK and spot modes do it — a single luminance channel
+  // throws the colour away before the screen ever runs, and saturated hues that
+  // differ wildly can share a luminance, so they collapse into each other.
   | {
       kind: 'field';
-      coverage: CoverageMap;
-      ink: string;
+      layers: Array<{ coverage: CoverageMap; ink: string }>;
+      width: number;
+      height: number;
       background: string;
       transparent: boolean;
     }

@@ -8,6 +8,9 @@ import {
   defaultHexScreen,
   defaultPaletteDitherMode,
   defaultPatternScreenMode,
+  defaultPatternInks,
+  defaultPatternCmyk,
+  defaultPatternSpot,
   defaultPoissonScreen,
   defaultRadialScreen,
   defaultRdContourMode,
@@ -23,6 +26,7 @@ import {
   type MarkKind,
   type ModeKind,
   type PaletteAlgorithm,
+  type PatternInks,
   type ResamplingMode,
   type ScreenKind,
   type SpotChannel,
@@ -807,6 +811,8 @@ function PatternScreenControls({
         the highlights, a checkerboard at 50%, holes in the shadows. Output is
         binary, so PNG export has no semi-transparent pixels.
       </p>
+      <PatternInkControls inks={mode.inks ?? defaultPatternInks}
+        onChange={(next) => onChange({ ...mode, inks: next })} />
       <div className="row">
         <label>Preset</label>
         <select value={activePreset?.id ?? ''}
@@ -892,6 +898,73 @@ function PatternScreenControls({
 //
 //   dpi = sourceWidth / outputWidthInches      cellSize = dpi / lpi
 //
+// Which inks the screen lays down. Separation happens before screening: a
+// single luminance channel cannot tell saturated hues apart, so colour work
+// needs one screen per ink at its own angle.
+function PatternInkControls({
+  inks, onChange,
+}: {
+  inks: PatternInks;
+  onChange: (i: PatternInks) => void;
+}) {
+  const setChannel = (idx: number, patch: Record<string, unknown>): void => {
+    if (inks.kind === 'mono') return;
+    const channels = inks.channels.map((c, i) => (i === idx ? { ...c, ...patch } : c));
+    onChange({ ...inks, channels } as PatternInks);
+  };
+  return (
+    <>
+      <div className="row">
+        <label>Inks</label>
+        <select value={inks.kind}
+          onChange={(e) => {
+            const k = e.target.value;
+            onChange(k === 'cmyk' ? defaultPatternCmyk()
+              : k === 'spot' ? defaultPatternSpot()
+              : { ...defaultPatternInks });
+          }}>
+          <option value="mono">Single ink (luminance)</option>
+          <option value="cmyk">CMYK (full colour)</option>
+          <option value="spot">Spot colours</option>
+        </select>
+      </div>
+      {inks.kind === 'mono' ? (
+        <p className="hint">
+          Screens luminance into one ink. A colour source loses its hues here —
+          saturated colours that look nothing alike can share a luminance and
+          collapse into each other. Use CMYK or spot to keep them apart.
+        </p>
+      ) : (
+        <>
+          <p className="hint">
+            Each ink is separated first, then screened at its own angle so the
+            dots interleave instead of stacking. Angles want to stay far apart
+            — matching two inks moirés them together.
+          </p>
+          {inks.channels.map((ch, i) => (
+            <div className="row" key={i}>
+              <label style={{ minWidth: 0, flex: '0 0 46px' }}>
+                <input type="checkbox" checked={ch.enabled}
+                  onChange={(e) => setChannel(i, { enabled: e.target.checked })} />
+                {' '}{inks.kind === 'cmyk' ? (ch as ChannelConfig).key : (ch as SpotChannel).name}
+              </label>
+              <input type="color" value={ch.color}
+                onChange={(e) => setChannel(i, { color: e.target.value })} />
+              <input type="number" min={0} max={180} step={0.5} value={ch.angleDeg}
+                title="screen angle"
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  if (Number.isFinite(n)) setChannel(i, { angleDeg: n });
+                }}
+                style={{ width: 60 }} />
+            </div>
+          ))}
+        </>
+      )}
+    </>
+  );
+}
+
 function PrintUnits({
   sourceWidth, outputWidthInches, setOutputWidthInches,
   cellSize, setCellSize, minFeature,
