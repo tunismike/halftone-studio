@@ -314,9 +314,11 @@ export interface PatternScreenParams {
   softPreview: boolean;
 }
 
+// Matches the "Grid Angle" preset, so entering the mode lands on a named
+// preset rather than reading as "Custom".
 export const defaultPatternScreen: PatternScreenParams = {
   field: { kind: 'cosDot' },
-  cellSize: 8,
+  cellSize: 9,
   angleDeg: 45,
   warp: { ...noPatternWarp },
   shaping: { ...defaultShaping },

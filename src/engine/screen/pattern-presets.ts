@@ -33,6 +33,26 @@ function preset(
   };
 }
 
+// Key-order-independent structural compare. Params reach us from object
+// literals, preset spreads, and JSON round-trips through the URL hash and
+// autosave, all of which can order keys differently for identical settings —
+// so a plain JSON.stringify comparison would report "Custom" for params that
+// exactly match a preset.
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(',')}}`;
+}
+
+/** The preset these params match exactly, if any. */
+export function matchPatternPreset(params: PatternScreenParams): PatternPreset | undefined {
+  const key = canonical(params);
+  return PATTERN_PRESETS.find((p) => canonical(p.params) === key);
+}
+
 // A broad, smooth bend — long next to the screen period, so the lattice stays
 // legible as a lattice while the rows visibly flow.
 function wave(waveAmp: number, waveFreq: number, wavePhase = 0): PatternWarp {

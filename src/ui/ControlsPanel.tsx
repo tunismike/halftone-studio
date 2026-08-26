@@ -29,7 +29,7 @@ import {
   type StrokeStyle,
 } from '../engine/pipeline';
 import { PATTERN_CATALOG, type PatternId } from '../engine/noise/reaction-diffusion';
-import { PATTERN_PRESETS, findPatternPreset } from '../engine/screen/pattern-presets';
+import { PATTERN_PRESETS, findPatternPreset, matchPatternPreset } from '../engine/screen/pattern-presets';
 import { defaultDistress, type DistressMode, type DistressParams } from '../engine/mark/distress';
 import {
   defaultTextureOverlay,
@@ -786,9 +786,7 @@ function PatternScreenControls({
     setP({ warp: { ...p.warp, ...next } });
 
   // Which preset, if any, the current params still match exactly.
-  const activePreset = PATTERN_PRESETS.find(
-    (x) => JSON.stringify(x.params) === JSON.stringify(p),
-  );
+  const activePreset = matchPatternPreset(p);
 
   return (
     <>

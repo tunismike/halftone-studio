@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   bakePatternField, renderPatternScreen, equalizeTile, inkDemand,
-  defaultShaping, noPatternWarp, coverageToMask,
+  defaultShaping, noPatternWarp, coverageToMask, defaultPatternScreen,
   type PatternFieldKind, type PatternScreenParams, type PatternTile,
 } from './pattern-field';
+import { PATTERN_PRESETS, matchPatternPreset } from './pattern-presets';
 import type { LumImage } from '../image/types';
 
 const ALL_FIELDS: PatternFieldKind[] = [
@@ -354,5 +355,45 @@ describe('inkDemand', () => {
   it('applies gamma between the clamps', () => {
     const p = { ...defaultShaping, gamma: 2 };
     expect(inkDemand(0.5, p)).toBeCloseTo(0.25, 6);
+  });
+});
+
+describe('preset matching', () => {
+  it('recognises a preset regardless of key order', () => {
+    const p = PATTERN_PRESETS[0];
+    expect(matchPatternPreset(p.params)?.id).toBe(p.id);
+
+    // Same settings, keys written in a different order — what a JSON round
+    // trip through the URL hash or autosave can produce.
+    const reordered = {
+      softPreview: p.params.softPreview,
+      shaping: { invert: p.params.shaping.invert, dropAt: p.params.shaping.dropAt,
+        solidAt: p.params.shaping.solidAt, gamma: p.params.shaping.gamma },
+      angleDeg: p.params.angleDeg,
+      warp: { ...p.params.warp },
+      cellSize: p.params.cellSize,
+      field: { ...p.params.field },
+    } as PatternScreenParams;
+    expect(matchPatternPreset(reordered)?.id).toBe(p.id);
+  });
+
+  it('survives a real JSON round trip for every preset', () => {
+    for (const p of PATTERN_PRESETS) {
+      expect(matchPatternPreset(JSON.parse(JSON.stringify(p.params)))?.id).toBe(p.id);
+    }
+  });
+
+  it('returns nothing once a value actually differs', () => {
+    const p = PATTERN_PRESETS[0];
+    expect(matchPatternPreset({ ...p.params, cellSize: p.params.cellSize + 1 })).toBeUndefined();
+  });
+
+  it('the default mode lands on a named preset', () => {
+    expect(matchPatternPreset(defaultPatternScreen)).toBeDefined();
+  });
+
+  it('every preset id is unique', () => {
+    const ids = PATTERN_PRESETS.map((p) => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 });
