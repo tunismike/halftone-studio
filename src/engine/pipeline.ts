@@ -233,7 +233,11 @@ export function defaultRdContourMode(): ModeKind {
 export function defaultPatternScreenMode(): ModeKind {
   return {
     kind: 'patternScreen',
-    pattern: { ...defaultPatternScreen, shaping: { ...defaultPatternScreen.shaping } },
+    pattern: {
+      ...defaultPatternScreen,
+      warp: { ...defaultPatternScreen.warp },
+      shaping: { ...defaultPatternScreen.shaping },
+    },
   };
 }
 

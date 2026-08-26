@@ -18,6 +18,7 @@
 // See docs/goal-v6.0.md.
 
 import type { LumImage } from '../image/types';
+import { fbm, type FbmParams } from '../noise/value';
 
 const TAU = Math.PI * 2;
 
@@ -35,6 +36,34 @@ export type PatternFieldKind =
   | { kind: 'roundDot' }
   // Parallel lines, width tracking coverage.
   | { kind: 'line' };
+
+// Domain warp: bend the field's coordinate space before evaluating it. Because
+// the field is a continuous function of (x,y) rather than a rendered bitmap,
+// warping its *domain* is exact — no resampling, no softening. Same parameter
+// shape as screen/warp.ts, which displaces samples instead.
+export interface PatternWarp {
+  waveAmp: number;
+  waveFreq: number;
+  wavePhase: number;
+  noiseAmp: number;
+  noiseFreq: number;
+  noiseSeed: number;
+}
+
+export const noPatternWarp: PatternWarp = {
+  waveAmp: 0,
+  waveFreq: 0.02,
+  wavePhase: 0,
+  noiseAmp: 0,
+  noiseFreq: 0.02,
+  noiseSeed: 1,
+};
+
+const WARP_FBM: FbmParams = { octaves: 3, lacunarity: 2, gain: 0.5 };
+
+export function isIdentityWarp(w: PatternWarp): boolean {
+  return w.waveAmp === 0 && w.noiseAmp === 0;
+}
 
 export interface PatternShaping {
   /** Ink-demand curve exponent. 1 = linear (leave it there for print). */
@@ -148,6 +177,7 @@ export interface PatternScreenParams {
   field: PatternFieldKind;
   cellSize: number;
   angleDeg: number;
+  warp: PatternWarp;
   shaping: PatternShaping;
   /** Antialias the preview by supersampling the threshold test. */
   softPreview: boolean;
@@ -157,6 +187,7 @@ export const defaultPatternScreen: PatternScreenParams = {
   field: { kind: 'cosDot' },
   cellSize: 8,
   angleDeg: 45,
+  warp: { ...noPatternWarp },
   shaping: { ...defaultShaping },
   softPreview: true,
 };
@@ -210,6 +241,8 @@ export function renderPatternScreen(
   const subs = ss * ss;
   const step = 1 / ss;
   const half = step / 2;
+  const w = p.warp;
+  const warped = !isIdentityWarp(w);
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -219,17 +252,36 @@ export function renderPatternScreen(
       // exact, not approximations — solid stays solid and dropout stays empty.
       if (cov <= 0) { out[i] = 0; continue; }
       if (cov >= 1) { out[i] = 255; continue; }
+      // The warp is smooth and low-frequency next to the screen itself, so one
+      // displacement per pixel is plenty — subsamples share it, which keeps the
+      // fbm cost off the inner loop.
+      let wx = 0;
+      let wy = 0;
+      if (warped) {
+        const cx = x + 0.5;
+        const cy = y + 0.5;
+        if (w.waveAmp !== 0) {
+          wx += w.waveAmp * Math.sin(w.waveFreq * cy + w.wavePhase);
+          wy += w.waveAmp * Math.sin(w.waveFreq * cx + w.wavePhase + Math.PI / 2);
+        }
+        if (w.noiseAmp !== 0) {
+          const nx = fbm(cx * w.noiseFreq, cy * w.noiseFreq, w.noiseSeed, WARP_FBM);
+          const ny = fbm(cx * w.noiseFreq, cy * w.noiseFreq, w.noiseSeed + 9173, WARP_FBM);
+          wx += w.noiseAmp * (nx - 0.5) * 2;
+          wy += w.noiseAmp * (ny - 0.5) * 2;
+        }
+      }
       if (ss === 1) {
-        const px = x + 0.5;
-        const py = y + 0.5;
+        const px = x + 0.5 + wx;
+        const py = y + 0.5 + wy;
         out[i] = cov > sampleTile(tile, px * ca + py * sa, -px * sa + py * ca) ? 255 : 0;
         continue;
       }
       let hits = 0;
       for (let sy = 0; sy < ss; sy++) {
-        const py = y + half + sy * step;
+        const py = y + half + sy * step + wy;
         for (let sx = 0; sx < ss; sx++) {
-          const px = x + half + sx * step;
+          const px = x + half + sx * step + wx;
           if (cov > sampleTile(tile, px * ca + py * sa, -px * sa + py * ca)) hits++;
         }
       }

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   bakePatternField, renderPatternScreen, equalizeTile, inkDemand,
-  defaultShaping, coverageToMask,
+  defaultShaping, noPatternWarp, coverageToMask,
   type PatternFieldKind, type PatternScreenParams,
 } from './pattern-field';
 import type { LumImage } from '../image/types';
@@ -23,6 +23,7 @@ function params(field: PatternFieldKind, over: Partial<PatternScreenParams> = {}
     field,
     cellSize: 8,
     angleDeg: 45,
+    warp: { ...noPatternWarp },
     shaping: { ...defaultShaping },
     softPreview: false,
     ...over,
@@ -120,6 +121,54 @@ describe('axis-aligned quantization', () => {
       inkFraction({ kind: 'roundDot' }, 0.35, { cellSize: 8, angleDeg: 0, softPreview: true }) - 0.65,
     );
     expect(soft).toBeLessThan(hard / 2);
+  });
+});
+
+describe('domain warp', () => {
+  const wavy = { waveAmp: 12, waveFreq: 0.02, wavePhase: 0.3, noiseAmp: 6, noiseFreq: 0.015, noiseSeed: 7 };
+
+  it.each(ALL_FIELDS)('preserves tonal linearity ($kind)', (field) => {
+    // A domain warp relocates which threshold each pixel reads but leaves the
+    // field's value distribution alone, so the tonal response must survive it.
+    for (const t of [0.2, 0.5, 0.8]) {
+      expect(inkFraction(field, t, { warp: wavy, angleDeg: 22.5 })).toBeCloseTo(1 - t, 1.5);
+    }
+  });
+
+  it('is deterministic for a given seed', () => {
+    const f: PatternFieldKind = { kind: 'roundDot' };
+    const tile = bakePatternField(f);
+    const a = renderPatternScreen(flat(0.4), tile, params(f, { warp: wavy }));
+    const b = renderPatternScreen(flat(0.4), tile, params(f, { warp: wavy }));
+    expect(Array.from(a.data)).toEqual(Array.from(b.data));
+  });
+
+  it('a different noise seed gives a different field', () => {
+    const f: PatternFieldKind = { kind: 'roundDot' };
+    const tile = bakePatternField(f);
+    const a = renderPatternScreen(flat(0.4), tile, params(f, { warp: wavy }));
+    const b = renderPatternScreen(flat(0.4), tile, params(f, { warp: { ...wavy, noiseSeed: 8 } }));
+    expect(Array.from(a.data)).not.toEqual(Array.from(b.data));
+  });
+
+  it('zero amplitude is exactly a no-op', () => {
+    const f: PatternFieldKind = { kind: 'cosDot' };
+    const tile = bakePatternField(f);
+    const plain = renderPatternScreen(flat(0.4), tile, params(f));
+    const zeroed = renderPatternScreen(flat(0.4), tile, params(f, {
+      warp: { ...noPatternWarp, waveFreq: 0.05, wavePhase: 2, noiseFreq: 0.3 },
+    }));
+    expect(Array.from(zeroed.data)).toEqual(Array.from(plain.data));
+  });
+
+  it('actually bends the pattern', () => {
+    const f: PatternFieldKind = { kind: 'line' };
+    const tile = bakePatternField(f);
+    const straight = renderPatternScreen(flat(0.5), tile, params(f, { angleDeg: 0 }));
+    const bent = renderPatternScreen(flat(0.5), tile, params(f, { angleDeg: 0, warp: wavy }));
+    let diff = 0;
+    for (let i = 0; i < bent.data.length; i++) if (bent.data[i] !== straight.data[i]) diff++;
+    expect(diff / bent.data.length).toBeGreaterThan(0.1);
   });
 });
 
