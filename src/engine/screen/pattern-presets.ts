@@ -133,15 +133,37 @@ export const PATTERN_PRESETS: PatternPreset[] = [
     field: { kind: 'rd', pattern: 'squiggles', iterations: 3000, gridSize: 160, seed: 1, featureTexels: 9 },
     cellSize: 7, angleDeg: 0,
   }),
-  // The same field in dash mode, which is what carved and stamped marks do:
-  // the maze breaks into separate strokes as the tone lightens instead of
-  // thinning into a complete web of hairlines.
-  preset('petroglyph', 'Petroglyph', {
+  // Same field in dash mode: the maze breaks into separate strokes as the tone
+  // lightens instead of thinning into a web of hairlines.
+  preset('turing-dashes', 'Turing Dashes', {
     field: {
       kind: 'rd', pattern: 'squiggles', iterations: 3000, gridSize: 160, seed: 1,
       featureTexels: 9, dash: { width: 0.4, scale: 24, seed: 7 },
     },
     cellSize: 4.5, angleDeg: 0,
+  }),
+  // Dash mode plus a noise warp, which is the part that makes it read as carved
+  // rather than grown. Reaction-diffusion worms repel each other and hold an
+  // even gap — crown shyness — so however the tone is remapped the result still
+  // looks like one organised system. Warping the field's domain squeezes some
+  // regions and stretches others, so worms crowd and touch in places and leave
+  // wide gaps in others, the way marks made independently do.
+  preset('petroglyph', 'Petroglyph', {
+    field: {
+      kind: 'rd', pattern: 'squiggles', iterations: 3000, gridSize: 160, seed: 1,
+      featureTexels: 9, dash: { width: 0.46, scale: 24, seed: 7 },
+    },
+    cellSize: 4.5, angleDeg: 0,
+    warp: { ...noPatternWarp, noiseAmp: 7, noiseFreq: 0.03, noiseSeed: 5 },
+  }),
+  // Ours. Short strokes placed independently and combined by nearest distance,
+  // so unlike anything reaction-diffusion can produce they cross and pile up.
+  preset('carved', 'Carved Marks', {
+    field: {
+      kind: 'strokes', cells: 22, length: 1, lengthJitter: 0.7,
+      spread: 0.75, bend: 0.6, bias: 0.35, seed: 11,
+    },
+    cellSize: 11, angleDeg: 0,
   }),
   preset('pebbles', 'Pebbles', {
     field: { kind: 'rd', pattern: 'pebbles', iterations: 2500, gridSize: 128, seed: 1, featureTexels: 8 },

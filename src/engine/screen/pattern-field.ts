@@ -119,6 +119,35 @@ export type PatternFieldKind =
   | {
       kind: 'rings'; cells: number; jitter: number; radius: number; seed: number;
       hex?: boolean; relax?: number;
+    }
+  // Scattered strokes: short segments at random angles, combined by nearest
+  // distance so they cross and merge freely.
+  //
+  // This exists because reaction-diffusion cannot make marks that touch. An RD
+  // field's worms repel each other and hold an even gap — crown shyness — so
+  // however its tone is remapped, the result still reads as one organised
+  // system rather than as marks made independently. Carved and stamped marks
+  // overlap, cross, and clump, and the only way to get that is to place them
+  // independently and let them collide.
+  | {
+      kind: 'strokes';
+      /** Strokes per tile side; one per lattice cell, jittered. */
+      cells: number;
+      /** Stroke length in cell units. */
+      length: number;
+      /** Random length variation, 0..1. */
+      lengthJitter: number;
+      /** How far a stroke's influence reaches, in cell units. Sets weight. */
+      spread: number;
+      /** Lateral bend at the stroke's midpoint, in cell units. */
+      bend: number;
+      /**
+       * Per-stroke appearance offset, 0..1. Whole strokes arrive at different
+       * tones rather than every stroke fading up together, which is what makes
+       * the count vary with tone instead of the weight.
+       */
+      bias: number;
+      seed: number;
     };
 
 // Domain warp: bend the field's coordinate space before evaluating it. Because
@@ -400,6 +429,20 @@ function nearestFeature(
   return best;
 }
 
+// Squared distance from a point to a segment, both in cell units.
+function segDistSq(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const vx = bx - ax;
+  const vy = by - ay;
+  const wx = px - ax;
+  const wy = py - ay;
+  const len2 = vx * vx + vy * vy;
+  let t = len2 > 1e-9 ? (wx * vx + wy * vy) / len2 : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  const dx = wx - vx * t;
+  const dy = wy - vy * t;
+  return dx * dx + dy * dy;
+}
+
 export function bakePatternField(field: PatternFieldKind): PatternTile {
   switch (field.kind) {
     case 'cosDot':
@@ -495,6 +538,57 @@ export function bakePatternField(field: PatternFieldKind): PatternTile {
         size: TILE_PROC, values: equalizeTile(values), tileCells: field.cells,
         aspect: field.hex ? SQRT3 / 2 : 1, smooth: true,
       };
+    }
+
+    case 'strokes': {
+      const { cells, seed } = field;
+      const values = bakeTorus(TILE_PROC, (u, v) => {
+        const cu = u * cells;
+        const cv = v * cells;
+        const cellX = Math.floor(cu);
+        const cellY = Math.floor(cv);
+        let best = Infinity;
+        // Wide enough that a stroke centred two cells away can still reach.
+        for (let dy = -2; dy <= 2; dy++) {
+          const ny = ((cellY + dy) % cells + cells) % cells;
+          for (let dx = -2; dx <= 2; dx++) {
+            const nx = ((cellX + dx) % cells + cells) % cells;
+            // Stroke geometry, all derived from the cell's hashes so the tile
+            // stays deterministic and seamless.
+            const cx = cellX + dx + 0.5 + (hash2(nx, ny, seed) - 0.5);
+            const cy = cellY + dy + 0.5 + (hash2(nx, ny, seed + 9173) - 0.5);
+            const ang = hash2(nx, ny, seed + 4523) * TAU;
+            const len = field.length * (1 - field.lengthJitter * hash2(nx, ny, seed + 7717));
+            const half = len / 2;
+            const ex = Math.cos(ang) * half;
+            const ey = Math.sin(ang) * half;
+            // Bend the stroke by pushing its midpoint sideways, then measure
+            // against the two halves so marks read as hooks, not tally sticks.
+            const bend = field.bend * (hash2(nx, ny, seed + 3313) - 0.5) * 2;
+            const mx = cx - ey * bend;
+            const my = cy + ex * bend;
+            const px = cu - cellX + cellX;
+            const py = cv - cellY + cellY;
+            const d2 = Math.min(
+              segDistSq(px, py, cx - ex, cy - ey, mx, my),
+              segDistSq(px, py, mx, my, cx + ex, cy + ey),
+            );
+            const d = Math.sqrt(d2) / Math.max(0.05, field.spread);
+            // The per-stroke offset has to fade out with distance. Applying it
+            // as a flat term instead lowers every texel in the search
+            // neighbourhood, so an early-biased stroke stamps its whole 5x5
+            // block of cells dark — square artefacts, not marks. Weighting it
+            // by (1 - d) keeps a stroke's influence local, and leaving val = d
+            // beyond the spread keeps the far field ordered by distance rather
+            // than tied at a single value that would all ink at once.
+            const dc = d > 1 ? 1 : d;
+            const val = d + field.bias * hash2(nx, ny, seed + 6151) * (1 - dc);
+            if (val < best) best = val;
+          }
+        }
+        return best;
+      });
+      return { size: TILE_PROC, values: equalizeTile(values), tileCells: cells, aspect: 1, smooth: true };
     }
 
     case 'rings': {

@@ -140,6 +140,7 @@ const BAKED_FIELDS: PatternFieldKind[] = [
   { kind: 'rings', cells: 8, jitter: 0.5, radius: 0.34, seed: 3 },
   { kind: 'points', cells: 8, jitter: 0.3, sizeJitter: 0.3, seed: 11, hex: true },
   { kind: 'points', cells: 10, jitter: 1, sizeJitter: 0.3, seed: 11, hex: true, relax: 8 },
+  { kind: 'strokes', cells: 10, length: 1, lengthJitter: 0.6, spread: 0.7, bend: 0.6, bias: 0.35, seed: 11 },
 ];
 
 describe('baked fields', () => {
@@ -659,5 +660,63 @@ describe('rd dash mode', () => {
     for (const tone of [0.25, 0.5, 0.75]) {
       expect(stats(field, tone).ink).toBeCloseTo(1 - tone, 1);
     }
+  });
+});
+
+describe('strokes field', () => {
+  const FIELD: PatternFieldKind = {
+    kind: 'strokes', cells: 20, length: 1, lengthJitter: 0.7,
+    spread: 0.75, bend: 0.6, bias: 0.35, seed: 11,
+  };
+
+  function marks(field: PatternFieldKind, tone: number): { count: number; largest: number } {
+    const w = 240, h = 240;
+    const data = new Float32Array(w * h);
+    data.fill(tone);
+    const cov = renderPatternScreen({ width: w, height: h, data },
+      bakePatternField(field), params(field, { cellSize: 10, angleDeg: 0 }));
+    const mask = coverageToMask(cov);
+    const seen = new Uint8Array(mask.length);
+    let count = 0, largest = 0;
+    for (let i = 0; i < mask.length; i++) {
+      if (!mask[i] || seen[i]) continue;
+      count++;
+      let n = 0;
+      const stack = [i];
+      seen[i] = 1;
+      while (stack.length) {
+        const c = stack.pop()!;
+        n++;
+        const cx = c % w, cy = (c / w) | 0;
+        for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]] as const) {
+          const nx = cx + dx, ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const k = ny * w + nx;
+          if (mask[k] && !seen[k]) { seen[k] = 1; stack.push(k); }
+        }
+      }
+      if (n > largest) largest = n;
+    }
+    return { count, largest: largest / mask.length };
+  }
+
+  it('scatters many separate marks rather than a few blocks', () => {
+    // Regression: applying the per-stroke offset as a flat term rather than
+    // fading it with distance darkened every texel in a stroke's 5x5 search
+    // neighbourhood, stamping square blocks of cells instead of marks. Tone
+    // stayed linear throughout, so only the shape of the output catches it.
+    const { count, largest } = marks(FIELD, 0.8);
+    expect(count).toBeGreaterThan(60);
+    expect(largest).toBeLessThan(0.05);
+  });
+
+  it('lets marks merge as tone darkens', () => {
+    // The whole reason this field exists: strokes are placed independently, so
+    // they collide. A field whose features hold each other apart would keep its
+    // mark count roughly flat instead of consolidating.
+    const light = marks(FIELD, 0.82);
+    const dark = marks(FIELD, 0.5);
+    expect(dark.count).toBeLessThan(light.count);
+    expect(dark.largest).toBeGreaterThan(light.largest * 3);
   });
 });
