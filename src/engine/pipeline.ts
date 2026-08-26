@@ -147,6 +147,13 @@ export interface PipelineParams {
   maskOverlay?: MaskOverlay;
   superSample?: boolean;
   resampling?: ResamplingMode;
+  /**
+   * Intended printed width, in inches. Purely a unit of account: it turns the
+   * source's pixel width into an output DPI, which is what lets a screen be
+   * specified in LPI the way a print shop actually specifies one. Nothing in
+   * the render pipeline reads it.
+   */
+  outputWidthInches?: number;
   /** When present, render a layered composition instead of the single mode. */
   composition?: LayeredComposition;
 }

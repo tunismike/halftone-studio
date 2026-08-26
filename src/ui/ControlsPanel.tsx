@@ -84,6 +84,8 @@ interface Props {
   resampling: ResamplingMode;
   setResampling: (r: ResamplingMode) => void;
   sourceWidth: number;
+  outputWidthInches: number;
+  setOutputWidthInches: (n: number) => void;
   client: import('../worker/client').HalftoneClient;
   /** When set, render only this tool's group(s) — used by the dock popover. */
   view?: ToolView;
@@ -102,7 +104,7 @@ export function ControlsPanel(props: Props) {
     textureOverlay, setTextureOverlay,
     maskOverlay, setMaskOverlay,
     superSample, setSuperSample,
-    resampling, setResampling, sourceWidth,
+    resampling, setResampling, sourceWidth, outputWidthInches, setOutputWidthInches,
     client, view,
   } = props;
 
@@ -220,7 +222,10 @@ export function ControlsPanel(props: Props) {
         )}
 
         {mode.kind === 'patternScreen' && (
-          <PatternScreenControls mode={mode} onChange={(m) => setMode(m)} />
+          <PatternScreenControls mode={mode} onChange={(m) => setMode(m)}
+            sourceWidth={sourceWidth}
+            outputWidthInches={outputWidthInches}
+            setOutputWidthInches={setOutputWidthInches} />
         )}
 
         {mode.kind === 'trace' && (
@@ -770,9 +775,15 @@ function RdContourControls({
 function PatternScreenControls({
   mode,
   onChange,
+  sourceWidth,
+  outputWidthInches,
+  setOutputWidthInches,
 }: {
   mode: Extract<ModeKind, { kind: 'patternScreen' }>;
   onChange: (m: ModeKind) => void;
+  sourceWidth: number;
+  outputWidthInches: number;
+  setOutputWidthInches: (n: number) => void;
 }) {
   const p = mode.pattern;
   const v = mode.vector;
@@ -841,6 +852,17 @@ function PatternScreenControls({
       <Slider label="Noise scale" value={p.warp.noiseFreq} min={0.002} max={0.08} step={0.001}
         onChange={(val) => setWarp({ noiseFreq: val })} />
 
+      {sourceWidth > 0 && (
+        <PrintUnits
+          sourceWidth={sourceWidth}
+          outputWidthInches={outputWidthInches}
+          setOutputWidthInches={setOutputWidthInches}
+          cellSize={p.cellSize}
+          setCellSize={(val) => setP({ cellSize: val })}
+          minFeature={v.minFeature}
+        />
+      )}
+
       <h3>Vector export</h3>
       <p className="hint">
         SVG export re-renders the screen at {v.supersample}× and traces that, so
@@ -860,6 +882,92 @@ function PatternScreenControls({
           onChange={(e) => setP({ softPreview: e.target.checked })} />
         Anti-aliased preview (print export stays hard-edged either way)
       </label>
+    </>
+  );
+}
+
+// Print units. A screen printer specifies a screen in lines per inch, not
+// pixels per cell; the bridge is the output DPI, which the source's pixel
+// width and the intended printed width determine between them:
+//
+//   dpi = sourceWidth / outputWidthInches      cellSize = dpi / lpi
+//
+function PrintUnits({
+  sourceWidth, outputWidthInches, setOutputWidthInches,
+  cellSize, setCellSize, minFeature,
+}: {
+  sourceWidth: number;
+  outputWidthInches: number;
+  setOutputWidthInches: (n: number) => void;
+  cellSize: number;
+  setCellSize: (n: number) => void;
+  minFeature: number;
+}) {
+  const inches = Math.max(0.1, outputWidthInches);
+  const dpi = sourceWidth / inches;
+  const lpi = dpi / Math.max(0.5, cellSize);
+  // Free-typing state so "3" on the way to "35" isn't clamped mid-keystroke.
+  const [lpiText, setLpiText] = useState(String(Math.round(lpi)));
+  useEffect(() => { setLpiText(String(Math.round(lpi))); }, [lpi]);
+
+  const target = Number(lpiText);
+  const validTarget = Number.isFinite(target) && target > 0;
+
+  const applyLpi = (): void => {
+    if (!validTarget) return;
+    setCellSize(+Math.max(1, dpi / target).toFixed(2));
+  };
+
+  // minFeature is an area; a printer thinks in dot width, so show the
+  // equivalent diameter.
+  const minMm = (Math.sqrt(Math.max(0, minFeature)) / dpi) * 25.4;
+  // Warn on the ruling being TYPED, not the one already applied — otherwise
+  // the feedback arrives only after the user has committed a screen too fine
+  // to hold a dot. Under ~2px per cell there aren't enough pixels left to
+  // carry a shape.
+  const projectedCell = validTarget ? dpi / target : Infinity;
+  const tooFine = projectedCell < 2;
+
+  return (
+    <>
+      <h3>Print size</h3>
+      <div className="row">
+        <label>Output width (in)</label>
+        <input type="number" min={0.5} max={60} step={0.5} value={outputWidthInches}
+          onChange={(e) => {
+            const n = Number(e.target.value);
+            if (Number.isFinite(n) && n > 0) setOutputWidthInches(n);
+          }}
+          style={{ width: 64 }} />
+      </div>
+      <div className="row">
+        <label>Effective DPI</label>
+        <span className="val" style={{ flex: 1, textAlign: 'right' }}>
+          {Math.round(dpi)} ({sourceWidth}px src)
+        </span>
+      </div>
+      <div className="row">
+        <label>Screen ruling (LPI)</label>
+        <input type="number" min={5} max={200} value={lpiText}
+          onChange={(e) => setLpiText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') applyLpi(); }}
+          style={{ width: 64 }} />
+        <button className="ghost" onClick={applyLpi} title="set cell size from this ruling">
+          Apply
+        </button>
+      </div>
+      <p className="hint">
+        {cellSize.toFixed(1)}px cells = {lpi.toFixed(0)} LPI.
+        {minFeature > 0 && ` Min feature ≈ ${minMm.toFixed(2)}mm across.`}
+        {' '}Apparel screens usually sit at 25–45 LPI.
+      </p>
+      {tooFine && (
+        <div className="preset-no-results" style={{ marginTop: 0 }}>
+          {target} LPI at {Math.round(dpi)} DPI is {projectedCell.toFixed(1)}px per
+          cell — too few pixels to hold a dot shape. Print smaller, use a
+          higher-res source, or drop the ruling.
+        </div>
+      )}
     </>
   );
 }

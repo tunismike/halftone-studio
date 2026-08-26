@@ -61,6 +61,7 @@ export function App() {
   const [textureOverlay, setTextureOverlay] = useState<TextureOverlay | undefined>(undefined);
   const [maskOverlay, setMaskOverlay] = useState<MaskOverlay | undefined>(undefined);
   const [superSample, setSuperSample] = useState<boolean>(false);
+  const [outputWidthInches, setOutputWidthInches] = useState<number>(8);
   const [resampling, setResampling] = useState<ResamplingMode>('bilinear');
   const [composition, setComposition] = useState<LayeredComposition | null>(null);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
@@ -227,8 +228,8 @@ export function App() {
   }, [client]);
 
   const params = useMemo(
-    () => ({ adjust, preprocess, mode, background, foreground, transparent, textureOverlay, maskOverlay, superSample, resampling, composition: composition ?? undefined }),
-    [adjust, preprocess, mode, background, foreground, transparent, textureOverlay, maskOverlay, superSample, resampling, composition],
+    () => ({ adjust, preprocess, mode, background, foreground, transparent, textureOverlay, maskOverlay, superSample, resampling, outputWidthInches, composition: composition ?? undefined }),
+    [adjust, preprocess, mode, background, foreground, transparent, textureOverlay, maskOverlay, superSample, resampling, outputWidthInches, composition],
   );
 
   // When a composition is active and a layer is selected, the shared control
@@ -665,6 +666,7 @@ export function App() {
     setMaskOverlay(p.maskOverlay);
     setSuperSample(p.superSample ?? false);
     setResampling(p.resampling ?? 'bilinear');
+    setOutputWidthInches(p.outputWidthInches ?? 8);
     setComposition(p.composition ?? null);
     setActiveLayerId(p.composition?.layers[p.composition.layers.length - 1]?.id ?? null);
     setActivePresetId(null);
@@ -780,6 +782,7 @@ export function App() {
     transparent: effTransparent, setTransparent: effSetTransparent,
     textureOverlay: eff.textureOverlay, setTextureOverlay: eff.setTextureOverlay,
     maskOverlay, setMaskOverlay, superSample, setSuperSample,
+    outputWidthInches, setOutputWidthInches,
     resampling, setResampling, sourceWidth: source?.width ?? 0, client,
   };
 
