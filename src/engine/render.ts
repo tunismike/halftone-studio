@@ -48,6 +48,47 @@ function stampDiscsToCanvas(
   return true;
 }
 
+// Composite a pattern-screen coverage map: one ink over the background, with
+// coverage as alpha. In hard (knockout) mode coverage is only 0 or 255, so
+// every pixel lands exactly on background or exactly on ink — no intermediate
+// alpha is ever written, which is the whole point of the mode.
+export function renderCoverageToCanvas(
+  cov: { width: number; height: number; data: Uint8Array },
+  ink: string, background: string, transparent: boolean, canvas: AnyCanvas,
+): void {
+  const { width, height, data } = cov;
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d') as
+    | CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+  if (!ctx) return;
+  const fg = HEX_RE.test(ink.trim()) ? hexToRgb(ink) : { r: 0, g: 0, b: 0 };
+  const fr = Math.round(fg.r * 255), fgn = Math.round(fg.g * 255), fb = Math.round(fg.b * 255);
+  const opaque = !transparent && background !== 'none';
+  const bg = opaque && HEX_RE.test(background.trim())
+    ? hexToRgb(background)
+    : { r: 1, g: 1, b: 1 };
+  const br = Math.round(bg.r * 255), bgn = Math.round(bg.g * 255), bb = Math.round(bg.b * 255);
+  const id = ctx.createImageData(width, height);
+  const out = id.data;
+  for (let i = 0, j = 0; i < data.length; i++, j += 4) {
+    const a = data[i];
+    if (opaque) {
+      const t = a / 255;
+      out[j] = br + (fr - br) * t;
+      out[j + 1] = bgn + (fgn - bgn) * t;
+      out[j + 2] = bb + (fb - bb) * t;
+      out[j + 3] = 255;
+    } else {
+      out[j] = fr;
+      out[j + 1] = fgn;
+      out[j + 2] = fb;
+      out[j + 3] = a;
+    }
+  }
+  ctx.putImageData(id, 0, 0);
+}
+
 export function renderTracedToCanvas(
   regions: TracedRegion[], width: number, height: number,
   background: string, transparent: boolean, canvas: AnyCanvas,

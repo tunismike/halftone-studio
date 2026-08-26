@@ -30,6 +30,10 @@ import { generateBlueNoiseMask, type BlueNoiseMask } from './noise/blue-noise-ma
 import { simulatePattern, type RdField } from './noise/reaction-diffusion';
 import { reactionDiffusionScreen } from './screen/reaction-diffusion-screen';
 import { runRdContour, rdContourToMarkSet } from './mode/rd-contour';
+import {
+  bakePatternField, renderPatternScreen,
+  type CoverageMap, type PatternTile,
+} from './screen/pattern-field';
 import { KERNELS } from './dither/kernels';
 import type { MarkGroup, MarkSet, Mark } from './mark/types';
 import type { Output } from './output';
@@ -50,6 +54,7 @@ type RasterMode = Extract<ModeKind, { kind: 'raster' }>;
 type PaletteDitherMode = Extract<ModeKind, { kind: 'paletteDither' }>;
 type TonalMode = Extract<ModeKind, { kind: 'tonal' }>;
 type RdContourMode = Extract<ModeKind, { kind: 'rdContour' }>;
+type PatternScreenMode = Extract<ModeKind, { kind: 'patternScreen' }>;
 
 export function runCachedPipeline(
   cache: Cache,
@@ -67,8 +72,33 @@ export function runCachedPipeline(
     case 'paletteDither': return runPaletteDither(cache, src, srcKey, p.mode);
     case 'tonal': return runTonal(cache, src, srcKey, p.mode);
     case 'rdContour': return runRdContourMode(cache, src, p, p.mode);
+    case 'patternScreen': return runPatternScreen(cache, src, srcKey, p, p.mode);
     case 'trace': return runTrace(cache, src, srcKey, p, p.mode);
   }
+}
+
+function runPatternScreen(
+  cache: Cache, src: RgbaImage, srcKey: string, p: PipelineParams,
+  mode: PatternScreenMode,
+): Output {
+  const ps = mode.pattern;
+  const lum = getLum(cache, src, srcKey, p.adjust);
+  // The equalized tile depends only on the field kind — not on cell size,
+  // angle, or the source — so one bake serves every edit of those.
+  const tile = cache.get<PatternTile>('pattern-tile', JSON.stringify(ps.field), () =>
+    bakePatternField(ps.field),
+  );
+  const key = `${src.width}x${src.height}|${srcKey}|${JSON.stringify(p.adjust)}|${JSON.stringify(ps)}`;
+  const coverage = cache.get<CoverageMap>('pattern-cov', key, () =>
+    renderPatternScreen(lum, tile, ps),
+  );
+  return {
+    kind: 'field',
+    coverage,
+    ink: p.foreground,
+    background: p.background,
+    transparent: p.transparent,
+  };
 }
 
 function runTrace(

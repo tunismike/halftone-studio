@@ -14,6 +14,7 @@ import { defaultRegistration, type RegistrationParams } from './mark/registratio
 import { defaultRdScreenParams, type RdScreenParams } from './screen/reaction-diffusion-screen';
 import { defaultStippleParams, type StippleParams } from './screen/stipple';
 import { defaultRdContourParams, type RdContourParams } from './mode/rd-contour';
+import { defaultPatternScreen, type PatternScreenParams } from './screen/pattern-field';
 import { defaultTraceOptions } from './trace/trace';
 import type { TextureOverlay } from './texture/types';
 import type { MaskOverlay } from './mask/types';
@@ -120,6 +121,10 @@ export type ModeKind =
       params: RdContourParams;
     }
   | {
+      kind: 'patternScreen';
+      pattern: PatternScreenParams;
+    }
+  | {
       kind: 'trace';
       trace: import('./trace/trace').TraceOptions;
     };
@@ -222,6 +227,13 @@ export function defaultRdContourMode(): ModeKind {
   return {
     kind: 'rdContour',
     params: { ...defaultRdContourParams },
+  };
+}
+
+export function defaultPatternScreenMode(): ModeKind {
+  return {
+    kind: 'patternScreen',
+    pattern: { ...defaultPatternScreen, shaping: { ...defaultPatternScreen.shaping } },
   };
 }
 

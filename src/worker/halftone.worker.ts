@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import { Cache } from '../engine/cache';
 import { runCachedPipeline } from '../engine/pipeline-cached';
-import { renderMarkSetToCanvas, renderIndexedToCanvas, renderTracedToCanvas } from '../engine/render';
+import { renderMarkSetToCanvas, renderIndexedToCanvas, renderTracedToCanvas, renderCoverageToCanvas } from '../engine/render';
 import { generateReferenceImage } from '../engine/image/reference';
 import { lumToRgba, rgbaToLum } from '../engine/image/luminance';
 import { boxDownsampleLinear } from '../engine/image/resample';
@@ -443,6 +443,8 @@ function drawOutput(canvas: OffscreenCanvas, out: Output, superSample = false): 
     c.putImageData(id, 0, 0);
   } else if (out.kind === 'indexed') {
     renderIndexedToCanvas(out.image, canvas);
+  } else if (out.kind === 'field') {
+    renderCoverageToCanvas(out.coverage, out.ink, out.background, out.transparent, canvas);
   } else if (out.kind === 'traced') {
     renderTracedToCanvas(out.regions, out.width, out.height, out.background, out.transparent, canvas);
   } else if (superSample) {
