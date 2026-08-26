@@ -136,7 +136,7 @@ export const PATTERN_PRESETS: PatternPreset[] = [
     cellSize: 6, angleDeg: 0,
   }),
   preset('pavers', 'Pavers', {
-    field: { kind: 'rings', cells: 24, jitter: 0.5, radius: 0.34, seed: 3 },
+    field: { kind: 'rings', cells: 24, jitter: 0.8, radius: 0.34, seed: 3, relax: 6 },
     cellSize: 14, angleDeg: 0,
   }),
   preset('plasma', 'Plasma', {
@@ -144,11 +144,11 @@ export const PATTERN_PRESETS: PatternPreset[] = [
     cellSize: 3, angleDeg: 0,
   }),
   preset('pointillism-1', 'Pointillism 1', {
-    field: { kind: 'points', cells: 40, jitter: 0.2, sizeJitter: 0.3, seed: 11, hex: true },
+    field: { kind: 'points', cells: 40, jitter: 1, sizeJitter: 0.3, seed: 11, hex: true, relax: 8 },
     cellSize: 11, angleDeg: 0,
   }),
   preset('pointillism-2', 'Pointillism 2', {
-    field: { kind: 'points', cells: 56, jitter: 0.25, sizeJitter: 0.5, seed: 23, hex: true },
+    field: { kind: 'points', cells: 56, jitter: 1, sizeJitter: 0.4, seed: 23, hex: true, relax: 8 },
     cellSize: 10, angleDeg: 0,
   }),
 ];

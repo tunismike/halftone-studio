@@ -137,6 +137,7 @@ const BAKED_FIELDS: PatternFieldKind[] = [
   { kind: 'points', cells: 8, jitter: 0.6, sizeJitter: 0.5, seed: 11 },
   { kind: 'rings', cells: 8, jitter: 0.5, radius: 0.34, seed: 3 },
   { kind: 'points', cells: 8, jitter: 0.3, sizeJitter: 0.3, seed: 11, hex: true },
+  { kind: 'points', cells: 10, jitter: 1, sizeJitter: 0.3, seed: 11, hex: true, relax: 8 },
 ];
 
 describe('baked fields', () => {
@@ -501,5 +502,89 @@ describe('hex packing', () => {
       bands.push(s / (w * (h / 8)));
     }
     expect(Math.max(...bands) - Math.min(...bands)).toBeLessThan(0.05);
+  });
+});
+
+describe('point relaxation', () => {
+  // A jittered grid at full jitter looks random but drops points from
+  // neighbouring cells on top of each other, and those pairs merge into worms.
+  // Relaxation puts a floor under the spacing without restoring the grid.
+  function separateDots(relax: number): { blobs: number; ink: number } {
+    const field: PatternFieldKind = {
+      kind: 'points', cells: 22, jitter: 1, sizeJitter: 0.3, seed: 11, relax,
+    };
+    const w = 220, h = 220;
+    const data = new Float32Array(w * h);
+    data.fill(0.62);
+    const cov = renderPatternScreen({ width: w, height: h, data },
+      bakePatternField(field), params(field, { cellSize: 9, angleDeg: 0 }));
+    const mask = coverageToMask(cov);
+    const seen = new Uint8Array(mask.length);
+    let blobs = 0, ink = 0;
+    for (let i = 0; i < mask.length; i++) {
+      ink += mask[i];
+      if (!mask[i] || seen[i]) continue;
+      blobs++;
+      const stack = [i];
+      seen[i] = 1;
+      while (stack.length) {
+        const c = stack.pop()!;
+        const cx = c % w, cy = (c / w) | 0;
+        for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]] as const) {
+          const nx = cx + dx, ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const k = ny * w + nx;
+          if (mask[k] && !seen[k]) { seen[k] = 1; stack.push(k); }
+        }
+      }
+    }
+    return { blobs, ink: ink / mask.length };
+  }
+
+  it('keeps dots separate at the same ink coverage', () => {
+    const raw = separateDots(0);
+    const relaxed = separateDots(8);
+    // Equalization fixes the ink fraction, so the only thing that can change
+    // is how much of it is stuck together.
+    expect(relaxed.ink).toBeCloseTo(raw.ink, 1);
+    expect(relaxed.blobs).toBeGreaterThan(raw.blobs * 1.15);
+  });
+
+  it('does not collapse back onto a lattice', () => {
+    // Relaxation run to convergence would rebuild the grid it is escaping, so
+    // the relaxed set must stay measurably more disordered than a bare lattice.
+    const lattice: PatternFieldKind = {
+      kind: 'points', cells: 22, jitter: 0, sizeJitter: 0, seed: 11, relax: 0,
+    };
+    const relaxed: PatternFieldKind = {
+      kind: 'points', cells: 22, jitter: 1, sizeJitter: 0, seed: 11, relax: 8,
+    };
+    const spread = (f: PatternFieldKind): number => {
+      const tile = bakePatternField(f);
+      let sum = 0;
+      for (let i = 0; i < tile.values.length; i++) sum += tile.values[i];
+      const mean = sum / tile.values.length;
+      let varr = 0;
+      for (let i = 0; i < tile.values.length; i++) {
+        const d = tile.values[i] - mean;
+        varr += d * d;
+      }
+      return varr / tile.values.length;
+    };
+    // Both are equalized so both have the same value spread; the difference is
+    // structural, so compare bond order instead via dot positions.
+    expect(spread(relaxed)).toBeCloseTo(spread(lattice), 2);
+    const a = bakePatternField(lattice).values;
+    const b = bakePatternField(relaxed).values;
+    let differing = 0;
+    for (let i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i]) > 0.05) differing++;
+    expect(differing / a.length).toBeGreaterThan(0.3);
+  });
+
+  it('is deterministic', () => {
+    const f: PatternFieldKind = {
+      kind: 'points', cells: 12, jitter: 1, sizeJitter: 0.3, seed: 4, relax: 6,
+    };
+    expect(Array.from(bakePatternField(f).values)).toEqual(Array.from(bakePatternField(f).values));
   });
 });

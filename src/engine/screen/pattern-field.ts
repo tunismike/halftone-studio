@@ -71,12 +71,28 @@ export type PatternFieldKind =
   | { kind: 'fbm'; octaves: number; lacunarity: number; gain: number; periods: number; seed: number }
   // Scattered dots on a jittered lattice, each with its own size bias, so dots
   // reach full size at different tones instead of growing in lockstep.
-  | { kind: 'points'; cells: number; jitter: number; sizeJitter: number; seed: number; hex?: boolean }
+  | {
+      kind: 'points'; cells: number; jitter: number; sizeJitter: number; seed: number;
+      hex?: boolean;
+      /**
+       * Repulsion passes over the point set. A jittered grid at high jitter
+       * looks random but drops points from neighbouring cells right on top of
+       * each other, and those pairs merge into worms instead of staying
+       * separate dots. A few passes of pushing points apart turns it into a
+       * blue-noise set: still random-looking, but with a floor on spacing.
+       * A few is the operative word — relaxation run to convergence collapses
+       * back onto a lattice, which is the very thing being escaped.
+       */
+      relax?: number;
+    }
   // Rings. Ink appears at a radius rather than at a point, so the screen runs
   // thin rings → thick rings → merged, with the ring centres and the gaps
   // between cells the last things to fill. A crazed-tile / paver look that no
   // centre-out mark can produce.
-  | { kind: 'rings'; cells: number; jitter: number; radius: number; seed: number; hex?: boolean };
+  | {
+      kind: 'rings'; cells: number; jitter: number; radius: number; seed: number;
+      hex?: boolean; relax?: number;
+    };
 
 // Domain warp: bend the field's coordinate space before evaluating it. Because
 // the field is a continuous function of (x,y) rather than a rendered bitmap,
@@ -261,33 +277,95 @@ function bakeTorus(size: number, raw: (u: number, v: number) => number): Float32
   return values;
 }
 
-// Distance to the nearest feature point on a tileable jittered lattice, in
-// cell units. Shared by the point and ring fields.
+interface PointSet {
+  cells: number;
+  /** x,y per home cell, in cell units, each point kept inside its own cell. */
+  xy: Float32Array;
+  /** Vertical squash so hex rows sit closer together than columns. */
+  rowScale: number;
+}
+
+// Stratified point set: one point per cell, jittered, then optionally relaxed
+// apart. Keeping every point inside its home cell is what lets the field
+// lookup stay a fixed 3x3 neighbourhood walk.
+function buildPointSet(
+  cells: number, jitter: number, seed: number, hex: boolean, relax: number,
+): PointSet {
+  const rowScale = hex ? SQRT3 / 2 : 1;
+  const xy = new Float32Array(cells * cells * 2);
+  const home = new Float32Array(cells * cells * 2);
+  for (let gy = 0; gy < cells; gy++) {
+    for (let gx = 0; gx < cells; gx++) {
+      const i = (gy * cells + gx) * 2;
+      const stagger = hex && (gy & 1) === 1 ? 0.5 : 0;
+      home[i] = gx + 0.5 + stagger;
+      home[i + 1] = gy + 0.5;
+      xy[i] = home[i] + jitter * (hash2(gx, gy, seed) - 0.5);
+      xy[i + 1] = home[i + 1] + jitter * (hash2(gx, gy, seed + 9173) - 0.5);
+    }
+  }
+  if (relax <= 0) return { cells, xy, rowScale };
+
+  const wrap = (d: number): number => d - Math.round(d / cells) * cells;
+  const target = 0.92;
+  const strength = 0.3;
+  let cur = xy;
+  let next = new Float32Array(xy.length);
+  for (let pass = 0; pass < relax; pass++) {
+    for (let gy = 0; gy < cells; gy++) {
+      for (let gx = 0; gx < cells; gx++) {
+        const i = (gy * cells + gx) * 2;
+        const px = cur[i];
+        const py = cur[i + 1];
+        let fx = 0;
+        let fy = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          const ny = ((gy + dy) % cells + cells) % cells;
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = ((gx + dx) % cells + cells) % cells;
+            const j = (ny * cells + nx) * 2;
+            const ddx = wrap(cur[j] - px);
+            const ddy = wrap(cur[j + 1] - py) * rowScale;
+            const d = Math.sqrt(ddx * ddx + ddy * ddy);
+            if (d > 1e-6 && d < target) {
+              const push = (target - d) / target / d;
+              fx -= ddx * push;
+              fy -= (ddy * push) / rowScale;
+            }
+          }
+        }
+        // Clamped to the home cell: a point that wandered further would break
+        // the 3x3 assumption the lookup depends on.
+        next[i] = Math.max(home[i] - 0.5, Math.min(home[i] + 0.5, px + fx * strength));
+        next[i + 1] = Math.max(home[i + 1] - 0.5, Math.min(home[i + 1] + 0.5, py + fy * strength));
+      }
+    }
+    const swap = cur; cur = next; next = swap;
+  }
+  return { cells, xy: cur, rowScale };
+}
+
+// Distance to the nearest point of a prepared set, in cell units.
 function nearestFeature(
-  u: number, v: number, cells: number, jitter: number, seed: number,
+  u: number, v: number, ps: PointSet,
   bias: (nx: number, ny: number) => number,
-  hex = false,
 ): number {
+  const { cells, xy, rowScale } = ps;
   const cu = u * cells;
   const cv = v * cells;
   const cellX = Math.floor(cu);
   const cellY = Math.floor(cv);
-  const fx = cu - cellX;
-  const fy = cv - cellY;
-  // A staggered lattice needs an even row count to wrap without a seam at the
-  // tile edge, and its rows sit closer together than its columns.
-  const rowScale = hex ? SQRT3 / 2 : 1;
   let best = Infinity;
   for (let dy = -1; dy <= 1; dy++) {
-    const row = cellY + dy;
-    const ny = (row % cells + cells) % cells;
-    const stagger = hex && (ny & 1) === 1 ? 0.5 : 0;
+    const ny = ((cellY + dy) % cells + cells) % cells;
     for (let dx = -1; dx <= 1; dx++) {
       const nx = ((cellX + dx) % cells + cells) % cells;
-      const px = dx + 0.5 + stagger + jitter * (hash2(nx, ny, seed) - 0.5);
-      const py = dy + 0.5 + jitter * (hash2(nx, ny, seed + 9173) - 0.5);
-      const ddx = px - fx;
-      const ddy = (py - fy) * rowScale;
+      const j = (ny * cells + nx) * 2;
+      // The point's stored position is absolute; shift it into the texel's
+      // neighbourhood so the toroidal wrap is handled by the cell offsets.
+      const ddx = xy[j] + (cellX + dx - nx) - cu;
+      const ddy = (xy[j + 1] + (cellY + dy - ny) - cv) * rowScale;
       const d = Math.sqrt(ddx * ddx + ddy * ddy) / Math.max(0.05, bias(nx, ny));
       if (d < best) best = d;
     }
@@ -356,9 +434,10 @@ export function bakePatternField(field: PatternFieldKind): PatternTile {
       // The per-point size bias is what makes this pointillism rather than
       // Worley: dots pop in and reach full size at different tones instead of
       // every dot growing in lockstep.
+      const ps = buildPointSet(field.cells, field.jitter, field.seed, !!field.hex, field.relax ?? 0);
       const values = bakeTorus(TILE_PROC, (u, v) =>
-        nearestFeature(u, v, field.cells, field.jitter, field.seed,
-          (nx, ny) => 1 - field.sizeJitter * hash2(nx, ny, field.seed + 4523), field.hex),
+        nearestFeature(u, v, ps,
+          (nx, ny) => 1 - field.sizeJitter * hash2(nx, ny, field.seed + 4523)),
       );
       return {
         size: TILE_PROC, values: equalizeTile(values), tileCells: field.cells,
@@ -369,8 +448,9 @@ export function bakePatternField(field: PatternFieldKind): PatternTile {
     case 'rings': {
       // Distance from a ring of radius `radius`, so the minimum — where ink
       // lands first — is a circle rather than a point.
+      const rs = buildPointSet(field.cells, field.jitter, field.seed, !!field.hex, field.relax ?? 0);
       const values = bakeTorus(TILE_PROC, (u, v) =>
-        Math.abs(nearestFeature(u, v, field.cells, field.jitter, field.seed, () => 1, field.hex) - field.radius),
+        Math.abs(nearestFeature(u, v, rs, () => 1) - field.radius),
       );
       return {
         size: TILE_PROC, values: equalizeTile(values), tileCells: field.cells,
