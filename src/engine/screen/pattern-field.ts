@@ -36,14 +36,22 @@ const TILE = 256;
 // before isotropic grain does.
 const TILE_PROC = 512;
 
+// Row spacing of an equilateral lattice whose columns sit one unit apart.
+const SQRT3 = Math.sqrt(3);
+
 export type PatternFieldKind =
+// `hex` staggers alternate rows onto an equilateral lattice instead of a
+// square one — the packing most printed dot screens actually use, since six
+// equidistant neighbours read as an even field where four plus diagonals read
+// as rows and columns.
+//
   // Euclidean dot: dots grow, merge into a checkerboard at 50%, invert to
   // round holes in the shadows. The classic newsprint screen.
-  | { kind: 'cosDot' }
+  | { kind: 'cosDot'; hex?: boolean }
   // Round dot: circular dots that stay circular as they merge (distance to
   // the nearest lattice point). Corners fill last, so shadows keep concave
   // diamond holes rather than flipping phase.
-  | { kind: 'roundDot' }
+  | { kind: 'roundDot'; hex?: boolean }
   // Parallel lines, width tracking coverage.
   | { kind: 'line' }
   // --- baked fields ---------------------------------------------------------
@@ -63,12 +71,12 @@ export type PatternFieldKind =
   | { kind: 'fbm'; octaves: number; lacunarity: number; gain: number; periods: number; seed: number }
   // Scattered dots on a jittered lattice, each with its own size bias, so dots
   // reach full size at different tones instead of growing in lockstep.
-  | { kind: 'points'; cells: number; jitter: number; sizeJitter: number; seed: number }
+  | { kind: 'points'; cells: number; jitter: number; sizeJitter: number; seed: number; hex?: boolean }
   // Rings. Ink appears at a radius rather than at a point, so the screen runs
   // thin rings → thick rings → merged, with the ring centres and the gaps
   // between cells the last things to fill. A crazed-tile / paver look that no
   // centre-out mark can produce.
-  | { kind: 'rings'; cells: number; jitter: number; radius: number; seed: number };
+  | { kind: 'rings'; cells: number; jitter: number; radius: number; seed: number; hex?: boolean };
 
 // Domain warp: bend the field's coordinate space before evaluating it. Because
 // the field is a continuous function of (x,y) rather than a rendered bitmap,
@@ -120,8 +128,17 @@ export interface PatternTile {
   size: number;
   /** Equalized thresholds in [0,1), tileable. */
   values: Float32Array;
-  /** How many `cellSize` units one tile side spans. */
+  /** How many `cellSize` units one tile side spans horizontally. */
   tileCells: number;
+  /**
+   * Vertical extent of the tile as a multiple of its horizontal extent.
+   *
+   * An equilateral lattice puts its rows sqrt(3)/2 apart for columns one apart,
+   * and that ratio is irrational — so a hex field cannot be baked into a square
+   * tile and still repeat seamlessly. Letting the tile cover a non-square patch
+   * of device space is what makes hex packing tileable at all.
+   */
+  aspect: number;
   /**
    * Whether neighbouring texels are correlated enough to interpolate between.
    *
@@ -208,6 +225,32 @@ function lineRaw(u: number): number {
   return Math.abs(u - Math.round(u)) * 2;
 }
 
+// Hex Euclidean dot. Three cosines along the triangular lattice's directions.
+// Every term is periodic over u+1 and v+1 AND over the half-step (u+1/2, v+1/2),
+// which is exactly the staggered-row symmetry — so it bakes into a tile of
+// aspect sqrt(3) with no seam.
+function hexCosDotRaw(u: number, v: number): number {
+  return -(Math.cos(TAU * (u - v)) + Math.cos(TAU * 2 * v) + Math.cos(TAU * (u + v)));
+}
+
+// Distance to the nearest point of a staggered lattice: rows every 1/2 in v,
+// odd rows shifted half a column. `v` is scaled by SQRT3 to get back to device
+// proportions, since the tile it lives in is that much taller than it is wide.
+function hexRoundDotRaw(u: number, v: number): number {
+  let best = Infinity;
+  const r0 = Math.round(v / 0.5);
+  for (let r = r0 - 1; r <= r0 + 1; r++) {
+    const vr = r * 0.5;
+    const off = (r & 1) === 0 ? 0 : 0.5;
+    let du = u - off;
+    du -= Math.round(du);
+    const dv = (v - vr) * SQRT3;
+    const d = Math.sqrt(du * du + dv * dv);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
 // Bake an arbitrary (u,v)→value function over the unit torus at `size`.
 function bakeTorus(size: number, raw: (u: number, v: number) => number): Float32Array {
   const values = new Float32Array(size * size);
@@ -223,6 +266,7 @@ function bakeTorus(size: number, raw: (u: number, v: number) => number): Float32
 function nearestFeature(
   u: number, v: number, cells: number, jitter: number, seed: number,
   bias: (nx: number, ny: number) => number,
+  hex = false,
 ): number {
   const cu = u * cells;
   const cv = v * cells;
@@ -230,15 +274,20 @@ function nearestFeature(
   const cellY = Math.floor(cv);
   const fx = cu - cellX;
   const fy = cv - cellY;
+  // A staggered lattice needs an even row count to wrap without a seam at the
+  // tile edge, and its rows sit closer together than its columns.
+  const rowScale = hex ? SQRT3 / 2 : 1;
   let best = Infinity;
   for (let dy = -1; dy <= 1; dy++) {
-    const ny = ((cellY + dy) % cells + cells) % cells;
+    const row = cellY + dy;
+    const ny = (row % cells + cells) % cells;
+    const stagger = hex && (ny & 1) === 1 ? 0.5 : 0;
     for (let dx = -1; dx <= 1; dx++) {
       const nx = ((cellX + dx) % cells + cells) % cells;
-      const px = dx + 0.5 + jitter * (hash2(nx, ny, seed) - 0.5);
+      const px = dx + 0.5 + stagger + jitter * (hash2(nx, ny, seed) - 0.5);
       const py = dy + 0.5 + jitter * (hash2(nx, ny, seed + 9173) - 0.5);
       const ddx = px - fx;
-      const ddy = py - fy;
+      const ddy = (py - fy) * rowScale;
       const d = Math.sqrt(ddx * ddx + ddy * ddy) / Math.max(0.05, bias(nx, ny));
       if (d < best) best = d;
     }
@@ -249,17 +298,21 @@ function nearestFeature(
 export function bakePatternField(field: PatternFieldKind): PatternTile {
   switch (field.kind) {
     case 'cosDot':
-      return { size: TILE, values: equalizeTile(bakeAnalytic(cosDotRaw)), tileCells: 1, smooth: true };
+      return field.hex
+        ? { size: TILE, values: equalizeTile(bakeAnalytic(hexCosDotRaw)), tileCells: 1, aspect: SQRT3, smooth: true }
+        : { size: TILE, values: equalizeTile(bakeAnalytic(cosDotRaw)), tileCells: 1, aspect: 1, smooth: true };
     case 'roundDot':
-      return { size: TILE, values: equalizeTile(bakeAnalytic(roundDotRaw)), tileCells: 1, smooth: true };
+      return field.hex
+        ? { size: TILE, values: equalizeTile(bakeAnalytic(hexRoundDotRaw)), tileCells: 1, aspect: SQRT3, smooth: true }
+        : { size: TILE, values: equalizeTile(bakeAnalytic(roundDotRaw)), tileCells: 1, aspect: 1, smooth: true };
     case 'line':
-      return { size: TILE, values: equalizeTile(bakeAnalytic((u) => lineRaw(u))), tileCells: 1, smooth: true };
+      return { size: TILE, values: equalizeTile(bakeAnalytic((u) => lineRaw(u))), tileCells: 1, aspect: 1, smooth: true };
 
     case 'blueNoise': {
       // Already a rank matrix, so equalization is a formality — but running it
       // keeps every field on one contract.
       const bn = generateBlueNoiseMask({ size: field.size, sigma: 1.5, seed: field.seed, initialDensity: 0.1 });
-      return { size: bn.size, values: equalizeTile(bn.values), tileCells: bn.size, smooth: false };
+      return { size: bn.size, values: equalizeTile(bn.values), tileCells: bn.size, aspect: 1, smooth: false };
     }
 
     case 'rd': {
@@ -276,6 +329,7 @@ export function bakePatternField(field: PatternFieldKind): PatternTile {
         size: rd.size,
         values: equalizeTile(raw),
         tileCells: rd.size / Math.max(1, field.featureTexels),
+        aspect: 1,
         smooth: true,
       };
     }
@@ -285,7 +339,7 @@ export function bakePatternField(field: PatternFieldKind): PatternTile {
         const { f1, f2 } = tileableWorley(u, v, field.cells, field.jitter, field.seed);
         return field.edge ? f2 - f1 : f1;
       });
-      return { size: TILE_PROC, values: equalizeTile(values), tileCells: field.cells, smooth: true };
+      return { size: TILE_PROC, values: equalizeTile(values), tileCells: field.cells, aspect: 1, smooth: true };
     }
 
     case 'fbm': {
@@ -295,7 +349,7 @@ export function bakePatternField(field: PatternFieldKind): PatternTile {
       const values = bakeTorus(TILE_PROC, (u, v) =>
         fbmTileable(u * field.periods, v * field.periods, field.seed, cfg, field.periods),
       );
-      return { size: TILE_PROC, values: equalizeTile(values), tileCells: field.periods, smooth: true };
+      return { size: TILE_PROC, values: equalizeTile(values), tileCells: field.periods, aspect: 1, smooth: true };
     }
 
     case 'points': {
@@ -304,18 +358,24 @@ export function bakePatternField(field: PatternFieldKind): PatternTile {
       // every dot growing in lockstep.
       const values = bakeTorus(TILE_PROC, (u, v) =>
         nearestFeature(u, v, field.cells, field.jitter, field.seed,
-          (nx, ny) => 1 - field.sizeJitter * hash2(nx, ny, field.seed + 4523)),
+          (nx, ny) => 1 - field.sizeJitter * hash2(nx, ny, field.seed + 4523), field.hex),
       );
-      return { size: TILE_PROC, values: equalizeTile(values), tileCells: field.cells, smooth: true };
+      return {
+        size: TILE_PROC, values: equalizeTile(values), tileCells: field.cells,
+        aspect: field.hex ? SQRT3 / 2 : 1, smooth: true,
+      };
     }
 
     case 'rings': {
       // Distance from a ring of radius `radius`, so the minimum — where ink
       // lands first — is a circle rather than a point.
       const values = bakeTorus(TILE_PROC, (u, v) =>
-        Math.abs(nearestFeature(u, v, field.cells, field.jitter, field.seed, () => 1) - field.radius),
+        Math.abs(nearestFeature(u, v, field.cells, field.jitter, field.seed, () => 1, field.hex) - field.radius),
       );
-      return { size: TILE_PROC, values: equalizeTile(values), tileCells: field.cells, smooth: true };
+      return {
+        size: TILE_PROC, values: equalizeTile(values), tileCells: field.cells,
+        aspect: field.hex ? SQRT3 / 2 : 1, smooth: true,
+      };
     }
   }
 }
@@ -381,12 +441,15 @@ export function renderPatternScreen(
   const { width, height } = lum;
   const out = new Uint8Array(width * height);
   const cell = Math.max(0.5, p.cellSize) * tile.tileCells;
-  // Fold cell scale and rotation into the basis so the inner loop is two
-  // multiply-adds per axis.
-  const k = tile.size / cell;
+  // Fold cell scale, tile aspect, and rotation into the basis so the inner
+  // loop stays two multiply-adds per axis.
+  const kx = tile.size / cell;
+  const ky = tile.size / (cell * tile.aspect);
   const theta = (p.angleDeg * Math.PI) / 180;
-  const ca = Math.cos(theta) * k;
-  const sa = Math.sin(theta) * k;
+  const ct = Math.cos(theta);
+  const st = Math.sin(theta);
+  const ax = ct * kx, ay = st * kx;
+  const bx = -st * ky, by = ct * ky;
   const ss = p.softPreview ? SOFT_SS : 1;
   const subs = ss * ss;
   const step = 1 / ss;
@@ -424,7 +487,7 @@ export function renderPatternScreen(
       if (ss === 1) {
         const px = x + 0.5 + wx;
         const py = y + 0.5 + wy;
-        out[i] = cov > sampleTile(tile, px * ca + py * sa, -px * sa + py * ca) ? 255 : 0;
+        out[i] = cov > sampleTile(tile, px * ax + py * ay, px * bx + py * by) ? 255 : 0;
         continue;
       }
       let hits = 0;
@@ -432,7 +495,7 @@ export function renderPatternScreen(
         const py = y + half + sy * step + wy;
         for (let sx = 0; sx < ss; sx++) {
           const px = x + half + sx * step + wx;
-          if (cov > sampleTile(tile, px * ca + py * sa, -px * sa + py * ca)) hits++;
+          if (cov > sampleTile(tile, px * ax + py * ay, px * bx + py * by)) hits++;
         }
       }
       out[i] = Math.round((hits / subs) * 255);

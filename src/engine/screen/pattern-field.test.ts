@@ -11,6 +11,8 @@ const ALL_FIELDS: PatternFieldKind[] = [
   { kind: 'cosDot' },
   { kind: 'roundDot' },
   { kind: 'line' },
+  { kind: 'cosDot', hex: true },
+  { kind: 'roundDot', hex: true },
 ];
 
 function flat(tone: number, w = 96, h = 96): LumImage {
@@ -134,6 +136,7 @@ const BAKED_FIELDS: PatternFieldKind[] = [
   { kind: 'fbm', octaves: 3, lacunarity: 2, gain: 0.5, periods: 8, seed: 5 },
   { kind: 'points', cells: 8, jitter: 0.6, sizeJitter: 0.5, seed: 11 },
   { kind: 'rings', cells: 8, jitter: 0.5, radius: 0.34, seed: 3 },
+  { kind: 'points', cells: 8, jitter: 0.3, sizeJitter: 0.3, seed: 11, hex: true },
 ];
 
 describe('baked fields', () => {
@@ -396,5 +399,107 @@ describe('preset matching', () => {
   it('every preset id is unique', () => {
     const ids = PATTERN_PRESETS.map((p) => p.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe('hex packing', () => {
+  // A square lattice puts its neighbours at 0/90 degrees; an equilateral one
+  // puts six at 60-degree steps, with alternate rows offset half a column.
+  // That staggering is what stops a dot screen reading as rows and columns,
+  // and it is the packing most printed screens actually use.
+  function dotCentroids(field: PatternFieldKind, tone: number): Array<[number, number]> {
+    const w = 200, h = 200;
+    const data = new Float32Array(w * h);
+    data.fill(tone);
+    const cov = renderPatternScreen({ width: w, height: h, data },
+      bakePatternField(field), params(field, { cellSize: 14, angleDeg: 0 }));
+    const mask = coverageToMask(cov);
+    const seen = new Uint8Array(mask.length);
+    const out: Array<[number, number]> = [];
+    for (let i = 0; i < mask.length; i++) {
+      if (!mask[i] || seen[i]) continue;
+      const stack = [i];
+      seen[i] = 1;
+      let sx = 0, sy = 0, n = 0, touchesEdge = false;
+      while (stack.length) {
+        const c = stack.pop()!;
+        const cx = c % w, cy = (c / w) | 0;
+        sx += cx; sy += cy; n++;
+        if (cx === 0 || cy === 0 || cx === w - 1 || cy === h - 1) touchesEdge = true;
+        for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]] as const) {
+          const nx = cx + dx, ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const k = ny * w + nx;
+          if (mask[k] && !seen[k]) { seen[k] = 1; stack.push(k); }
+        }
+      }
+      if (!touchesEdge && n >= 4) out.push([sx / n, sy / n]);
+    }
+    return out;
+  }
+
+  // Mean angular distance of each dot's nearest bonds from the closest
+  // multiple of `step` degrees. The symmetry the lattice actually has wins.
+  function bondDeviation(cs: Array<[number, number]>, step: number): number {
+    let sum = 0, count = 0;
+    for (let i = 0; i < cs.length; i++) {
+      const [x, y] = cs[i];
+      const d = cs
+        .map((c, j) => [Math.hypot(c[0] - x, c[1] - y), j] as const)
+        .filter(([, j]) => j !== i)
+        .sort((a, b) => a[0] - b[0])
+        .slice(0, 6);
+      if (!d.length) continue;
+      const r0 = d[0][0];
+      for (const [dist, j] of d) {
+        if (dist > r0 * 1.35) break;
+        const ang = ((Math.atan2(cs[j][1] - y, cs[j][0] - x) * 180) / Math.PI + 360) % 180;
+        const m = ang % step;
+        sum += Math.min(m, step - m);
+        count++;
+      }
+    }
+    return count ? sum / count : NaN;
+  }
+
+  it.each([
+    { kind: 'cosDot', hex: true } as PatternFieldKind,
+    { kind: 'roundDot', hex: true } as PatternFieldKind,
+    { kind: 'points', cells: 14, jitter: 0, sizeJitter: 0, seed: 3, hex: true } as PatternFieldKind,
+  ])('staggers rows onto a 60-degree lattice ($kind)', (field) => {
+    const cs = dotCentroids(field, 0.8);
+    expect(cs.length).toBeGreaterThan(20);
+    expect(bondDeviation(cs, 60)).toBeLessThan(bondDeviation(cs, 90));
+  });
+
+  it.each([
+    { kind: 'cosDot' } as PatternFieldKind,
+    { kind: 'roundDot' } as PatternFieldKind,
+  ])('leaves the square lattice square when hex is off ($kind)', (field) => {
+    const cs = dotCentroids(field, 0.8);
+    expect(cs.length).toBeGreaterThan(20);
+    expect(bondDeviation(cs, 90)).toBeLessThan(bondDeviation(cs, 60));
+  });
+
+  it('keeps hex tiles seamless across the wrap', () => {
+    // The tile is sqrt(3) taller than it is wide precisely so the staggered
+    // rows meet at the seam; a mismatch would show as a tone discontinuity.
+    const field: PatternFieldKind = { kind: 'roundDot', hex: true };
+    const tile = bakePatternField(field);
+    expect(tile.aspect).toBeCloseTo(Math.sqrt(3), 6);
+    const w = 400, h = 400;
+    const data = new Float32Array(w * h);
+    data.fill(0.5);
+    const cov = renderPatternScreen({ width: w, height: h, data }, tile,
+      params(field, { cellSize: 9, angleDeg: 0 }));
+    // Ink fraction per horizontal band should be flat: a seam would spike one.
+    const bands: number[] = [];
+    for (let b = 0; b < 8; b++) {
+      let s = 0;
+      for (let y = b * (h / 8); y < (b + 1) * (h / 8); y++)
+        for (let x = 0; x < w; x++) s += cov.data[y * w + x] / 255;
+      bands.push(s / (w * (h / 8)));
+    }
+    expect(Math.max(...bands) - Math.min(...bands)).toBeLessThan(0.05);
   });
 });

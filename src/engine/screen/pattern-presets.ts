@@ -90,13 +90,13 @@ export const PATTERN_PRESETS: PatternPreset[] = [
 
   // --- warped lattices ------------------------------------------------------
   preset('mesh-wave', 'Mesh Wave', {
-    field: { kind: 'cosDot' }, cellSize: 14, angleDeg: 0, warp: wave(9, 0.017),
+    field: { kind: 'cosDot', hex: true }, cellSize: 14, angleDeg: 0, warp: wave(9, 0.017),
   }),
   preset('dot-mesh-wave', 'Dot Mesh Wave', {
-    field: { kind: 'roundDot' }, cellSize: 10, angleDeg: 0, warp: wave(9, 0.017),
+    field: { kind: 'roundDot', hex: true }, cellSize: 10, angleDeg: 0, warp: wave(9, 0.017),
   }),
   preset('dot-wave', 'Dot Wave', {
-    field: { kind: 'roundDot' }, cellSize: 11, angleDeg: 0, warp: wave(16, 0.011),
+    field: { kind: 'roundDot', hex: true }, cellSize: 11, angleDeg: 0, warp: wave(16, 0.011),
   }),
 
   // --- warped line screens --------------------------------------------------
@@ -144,11 +144,11 @@ export const PATTERN_PRESETS: PatternPreset[] = [
     cellSize: 3, angleDeg: 0,
   }),
   preset('pointillism-1', 'Pointillism 1', {
-    field: { kind: 'points', cells: 40, jitter: 0.2, sizeJitter: 0.3, seed: 11 },
+    field: { kind: 'points', cells: 40, jitter: 0.2, sizeJitter: 0.3, seed: 11, hex: true },
     cellSize: 11, angleDeg: 0,
   }),
   preset('pointillism-2', 'Pointillism 2', {
-    field: { kind: 'points', cells: 56, jitter: 0.25, sizeJitter: 0.5, seed: 23 },
+    field: { kind: 'points', cells: 56, jitter: 0.25, sizeJitter: 0.5, seed: 23, hex: true },
     cellSize: 10, angleDeg: 0,
   }),
 ];
