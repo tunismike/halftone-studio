@@ -166,9 +166,18 @@ export const PATTERN_PRESETS: PatternPreset[] = [
     },
     cellSize: 11, angleDeg: 0,
   }),
-  // The spot regime, then roughened and smoothed. Topology first: spots stay
-  // separate at coverage where the neighbouring "reptile" regime would connect
-  // its features into a web, and the reference keeps distinct blobs.
+  // Gray-Scott on the spot/worm boundary, tuned by feed/kill directly rather
+  // than by a catalog name, then roughened and smoothed.
+  //
+  // The boundary is where round blobs and elongated worms of the same width
+  // coexist at one coverage, which is what the reference does. Neither named
+  // neighbour manages it: the pure spot regime's blobs can only merge in
+  // pairs, and a pair merging through a threshold grows its bridge from zero
+  // width, so the joins pinch into filaments instead of holding the stroke
+  // weight. "reptile" overshoots into a labyrinth. Worms that come from the
+  // regime rather than from a merge are full width along their length, and
+  // (0.0257, 0.0593) sets the ratio of blobs to worms where the reference
+  // has it.
   //
   // Roughen scale and blur radius have to move together. Roughening near the
   // feature scale drags neighbouring blobs into each other, and no amount of
@@ -185,7 +194,8 @@ export const PATTERN_PRESETS: PatternPreset[] = [
   // even gap, which reads as cheap long before the shapes themselves do.
   preset('pebbles', 'Pebbles', {
     field: {
-      kind: 'rd', pattern: 'pebbles', iterations: 2500, gridSize: 128, seed: 1,
+      kind: 'rd', pattern: 'reptile', fk: { F: 0.0257, k: 0.0593 },
+      iterations: 2500, gridSize: 128, seed: 1,
       featureTexels: 8, roughen: { amount: 0.25, scale: 24, seed: 3 }, smooth: 1.5,
     },
     cellSize: 6, angleDeg: 0,

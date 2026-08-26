@@ -894,3 +894,59 @@ describe('rd smooth', () => {
     }
   });
 });
+
+describe('rd feed/kill override', () => {
+  const BASE = {
+    kind: 'rd', pattern: 'pebbles', iterations: 1500, gridSize: 96, seed: 1, featureTexels: 8,
+  } as const;
+
+  it('matches the named pattern when given its own rates', () => {
+    // "pebbles" is (0.025, 0.060) in the catalog, so passing those explicitly
+    // has to reproduce it — otherwise the override is not wired to the same
+    // simulation the names go through.
+    const named = bakePatternField({ ...BASE });
+    const explicit = bakePatternField({ ...BASE, fk: { F: 0.025, k: 0.06 } });
+    expect(Array.from(explicit.values)).toEqual(Array.from(named.values));
+  });
+
+  it('walks the spot-to-worm boundary', () => {
+    // Feature elongation is the point of the override: lower kill gives worms,
+    // higher gives round spots. Perimeter per unit ink rises with elongation,
+    // since a worm carries more boundary than a blob of the same area.
+    const elongation = (k: number): number => {
+      const field: PatternFieldKind = { ...BASE, fk: { F: 0.0257, k } };
+      const w = 200, h = 200;
+      const data = new Float32Array(w * h);
+      data.fill(0.63);
+      const cov = renderPatternScreen({ width: w, height: h, data },
+        bakePatternField(field), params(field, { cellSize: 6, angleDeg: 0 }));
+      const mask = coverageToMask(cov);
+      let area = 0, perim = 0;
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          const i = y * w + x;
+          if (!mask[i]) continue;
+          area++;
+          if (!mask[i - 1] || !mask[i + 1] || !mask[i - w] || !mask[i + w]) perim++;
+        }
+      }
+      return perim / Math.max(1, area);
+    };
+    expect(elongation(0.0590)).toBeGreaterThan(elongation(0.0600));
+  });
+
+  it('does not disturb tonal linearity', () => {
+    const field: PatternFieldKind = { ...BASE, fk: { F: 0.0257, k: 0.0593 } };
+    const tile = bakePatternField(field);
+    for (const tone of [0.3, 0.5, 0.7]) {
+      const w = 200, h = 200;
+      const data = new Float32Array(w * h);
+      data.fill(tone);
+      const cov = renderPatternScreen({ width: w, height: h, data }, tile,
+        params(field, { cellSize: 6, angleDeg: 22.5 }));
+      let sum = 0;
+      for (let i = 0; i < cov.data.length; i++) sum += cov.data[i] / 255;
+      expect(sum / cov.data.length).toBeCloseTo(1 - tone, 1);
+    }
+  });
+});

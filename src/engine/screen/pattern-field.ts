@@ -22,7 +22,7 @@ import { fbm, fbmTileable, type FbmParams } from '../noise/value';
 import { hash2 } from '../noise/hash';
 import { tileableWorley } from '../noise/worley';
 import { generateBlueNoiseMask } from '../noise/blue-noise-mask';
-import { simulatePattern, type PatternId } from '../noise/reaction-diffusion';
+import { simulatePattern, simulateGrayScott, type PatternId } from '../noise/reaction-diffusion';
 
 const TAU = Math.PI * 2;
 
@@ -66,6 +66,17 @@ export type PatternFieldKind =
   | {
       kind: 'rd'; pattern: PatternId; iterations: number; gridSize: number;
       seed: number; featureTexels: number;
+      /**
+       * Override the named pattern's Gray-Scott feed/kill rates.
+       *
+       * The catalog's names are samples from a continuous space, and the
+       * interesting screens are often between two of them. The spot/worm
+       * boundary in particular is a narrow band: "pebbles" at (0.025, 0.060)
+       * gives round spots that can only ever merge in pairs, "reptile" at
+       * (0.026, 0.059) gives so many worms it reads as a labyrinth, and the
+       * balance of blobs to worms swings across that gap.
+       */
+      fk?: { F: number; k: number };
       /**
        * Turn the worms from thickness-modulated into density-modulated.
        *
@@ -559,12 +570,20 @@ export function bakePatternField(field: PatternFieldKind): PatternTile {
     }
 
     case 'rd': {
-      const rd = simulatePattern({
-        pattern: field.pattern,
-        size: field.gridSize,
-        iterations: field.iterations,
-        seed: field.seed,
-      });
+      const rd = field.fk
+        ? simulateGrayScott({
+            size: field.gridSize,
+            F: field.fk.F,
+            k: field.fk.k,
+            iterations: field.iterations,
+            seed: field.seed,
+          })
+        : simulatePattern({
+            pattern: field.pattern,
+            size: field.gridSize,
+            iterations: field.iterations,
+            seed: field.seed,
+          });
       // High V concentration = the structure; invert so structure inks first.
       const raw = new Float32Array(rd.values.length);
       for (let i = 0; i < raw.length; i++) raw[i] = -rd.values[i];
