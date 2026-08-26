@@ -124,12 +124,24 @@ export const PATTERN_PRESETS: PatternPreset[] = [
   preset('stipple', 'Blue-noise stipple', {
     field: { kind: 'blueNoise', size: 64, seed: 1 }, cellSize: 2, angleDeg: 0,
   }),
-  preset('petroglyph', 'Petroglyph', {
-    // Grid size drives both the bake cost and how far the tile repeats. 160²
-    // lands at ~0.6s, in line with the rdContour mode that already ships;
-    // 256² looked marginally better and took 3s, which is a freeze, not a wait.
+  // Ours, not a copy of anything: a Gray-Scott reaction-diffusion field read
+  // straight, so one maze skeleton holds at every tone and the strokes thicken
+  // and thin with it. Grid size drives both bake cost and how far the tile
+  // repeats — 160² lands at ~0.6s, in line with the rdContour mode that already
+  // ships, where 256² looked marginally better and took 3s: a freeze, not a wait.
+  preset('turing-diffusion', 'Turing Diffusion', {
     field: { kind: 'rd', pattern: 'squiggles', iterations: 3000, gridSize: 160, seed: 1, featureTexels: 9 },
     cellSize: 7, angleDeg: 0,
+  }),
+  // The same field in dash mode, which is what carved and stamped marks do:
+  // the maze breaks into separate strokes as the tone lightens instead of
+  // thinning into a complete web of hairlines.
+  preset('petroglyph', 'Petroglyph', {
+    field: {
+      kind: 'rd', pattern: 'squiggles', iterations: 3000, gridSize: 160, seed: 1,
+      featureTexels: 9, dash: { width: 0.4, scale: 24, seed: 7 },
+    },
+    cellSize: 4.5, angleDeg: 0,
   }),
   preset('pebbles', 'Pebbles', {
     field: { kind: 'rd', pattern: 'pebbles', iterations: 2500, gridSize: 128, seed: 1, featureTexels: 8 },

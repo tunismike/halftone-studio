@@ -63,7 +63,34 @@ export type PatternFieldKind =
   | { kind: 'blueNoise'; size: number; seed: number }
   // Gray-Scott reaction-diffusion. Worm regimes give a carved/petroglyph
   // texture, spot regimes give packed pebbles.
-  | { kind: 'rd'; pattern: PatternId; iterations: number; gridSize: number; seed: number; featureTexels: number }
+  | {
+      kind: 'rd'; pattern: PatternId; iterations: number; gridSize: number;
+      seed: number; featureTexels: number;
+      /**
+       * Turn the worms from thickness-modulated into density-modulated.
+       *
+       * Thresholding a fixed field can only make its ridges fatter or thinner —
+       * the skeleton never changes, so a plain RD screen runs the same maze at
+       * every tone. Carved/stamped marks behave the opposite way: constant
+       * stroke width, fewer strokes as the tone lightens.
+       *
+       * Reordering gets most of the way there. Every pixel inside a worm is
+       * re-keyed to a smooth noise value, so worms switch on in segments
+       * instead of the whole maze thinning together: at a given tone you get
+       * fewer, longer marks rather than a complete maze of hairlines. Measured
+       * at 30% coverage that is ~2.5x as many separate marks for the same ink.
+       *
+       * It buys fragmentation, not literally constant stroke weight — the
+       * widest point of a mark still creeps up with coverage, much as it does
+       * without dash. Above `width` the field is left alone, so the shadow end
+       * behaves exactly as the plain field does.
+       *
+       * `width` is the area fraction counted as worm (so, roughly the stroke
+       * weight); `scale` is how many noise periods span the tile, setting how
+       * long the surviving dashes run.
+       */
+      dash?: { width: number; scale: number; seed: number };
+    }
   // Worley/cellular. `edge: true` uses F2-F1, whose minima trace the cell
   // boundaries — a paver/crazed-tile look; `false` uses F1 for packed blobs.
   | { kind: 'worley'; cells: number; jitter: number; edge: boolean; seed: number }
@@ -403,9 +430,34 @@ export function bakePatternField(field: PatternFieldKind): PatternTile {
       // High V concentration = the structure; invert so structure inks first.
       const raw = new Float32Array(rd.values.length);
       for (let i = 0; i < raw.length; i++) raw[i] = -rd.values[i];
+      let values = equalizeTile(raw);
+      const d = field.dash;
+      if (d) {
+        // `values` is uniform on [0,1), so the worms are exactly the pixels
+        // below `width`. Re-key those to smooth noise scaled into the same
+        // [0, width) band: the band keeps its measure, so tone stays linear,
+        // but within it a whole dash now switches on at once instead of every
+        // worm thickening together.
+        const cfg: FbmParams = { octaves: 3, lacunarity: 2, gain: 0.5 };
+        const n = rd.size;
+        const noise = new Float32Array(n * n);
+        for (let j = 0; j < n; j++) {
+          for (let i = 0; i < n; i++) {
+            noise[j * n + i] = fbmTileable(
+              ((i + 0.5) / n) * d.scale, ((j + 0.5) / n) * d.scale, d.seed, cfg, d.scale,
+            );
+          }
+        }
+        const noiseEq = equalizeTile(noise);
+        const out = new Float32Array(values.length);
+        for (let i = 0; i < out.length; i++) {
+          out[i] = values[i] < d.width ? noiseEq[i] * d.width : values[i];
+        }
+        values = equalizeTile(out);
+      }
       return {
         size: rd.size,
-        values: equalizeTile(raw),
+        values,
         tileCells: rd.size / Math.max(1, field.featureTexels),
         aspect: 1,
         smooth: true,

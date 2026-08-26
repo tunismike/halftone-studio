@@ -131,6 +131,8 @@ describe('axis-aligned quantization', () => {
 const BAKED_FIELDS: PatternFieldKind[] = [
   { kind: 'blueNoise', size: 32, seed: 1 },
   { kind: 'rd', pattern: 'pebbles', iterations: 600, gridSize: 64, seed: 1, featureTexels: 8 },
+  { kind: 'rd', pattern: 'squiggles', iterations: 600, gridSize: 64, seed: 1, featureTexels: 8,
+    dash: { width: 0.4, scale: 8, seed: 7 } },
   { kind: 'worley', cells: 8, jitter: 0.9, edge: true, seed: 3 },
   { kind: 'worley', cells: 8, jitter: 0.9, edge: false, seed: 3 },
   { kind: 'fbm', octaves: 3, lacunarity: 2, gain: 0.5, periods: 8, seed: 5 },
@@ -586,5 +588,76 @@ describe('point relaxation', () => {
       kind: 'points', cells: 12, jitter: 1, sizeJitter: 0.3, seed: 4, relax: 6,
     };
     expect(Array.from(bakePatternField(f).values)).toEqual(Array.from(bakePatternField(f).values));
+  });
+});
+
+describe('rd dash mode', () => {
+  // Thresholding a fixed field can only fatten or thin its ridges, so a plain
+  // RD screen runs the same maze at every tone, just at different weights.
+  // Dash mode reorders the worm band by smooth noise so worms drop out in
+  // segments instead. What that buys is fragmentation — measured here — not
+  // literally constant stroke weight, which barely moves either way.
+  const BASE = {
+    kind: 'rd', pattern: 'squiggles', iterations: 2000, gridSize: 128, seed: 1, featureTexels: 9,
+  } as const;
+  const DASH = { width: 0.4, scale: 18, seed: 7 } as const;
+
+  function render(field: PatternFieldKind, tone: number): { mask: Uint8Array; w: number; h: number } {
+    const w = 240, h = 240;
+    const data = new Float32Array(w * h);
+    data.fill(tone);
+    const cov = renderPatternScreen({ width: w, height: h, data },
+      bakePatternField(field), params(field, { cellSize: 6, angleDeg: 0 }));
+    return { mask: coverageToMask(cov), w, h };
+  }
+
+  function stats(field: PatternFieldKind, tone: number): { marks: number; ink: number } {
+    const { mask, w, h } = render(field, tone);
+    const seen = new Uint8Array(mask.length);
+    let marks = 0, ink = 0;
+    for (let i = 0; i < mask.length; i++) {
+      ink += mask[i];
+      if (!mask[i] || seen[i]) continue;
+      marks++;
+      const stack = [i];
+      seen[i] = 1;
+      while (stack.length) {
+        const c = stack.pop()!;
+        const cx = c % w, cy = (c / w) | 0;
+        for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]] as const) {
+          const nx = cx + dx, ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const k = ny * w + nx;
+          if (mask[k] && !seen[k]) { seen[k] = 1; stack.push(k); }
+        }
+      }
+    }
+    return { marks, ink: ink / mask.length };
+  }
+
+  it('breaks the maze into far more separate marks at the same ink', () => {
+    // Tone 0.7 puts ink demand at 0.3, inside the 0.4 dash band.
+    const plain = stats({ ...BASE }, 0.7);
+    const dashed = stats({ ...BASE, dash: DASH }, 0.7);
+    expect(dashed.ink).toBeCloseTo(plain.ink, 1);
+    expect(dashed.marks).toBeGreaterThan(plain.marks * 1.8);
+  });
+
+  it('leaves the shadow end alone above the dash band', () => {
+    // Ink demand 0.55 is past width 0.4, where the field is untouched, so the
+    // two must agree — a dash setting that changed the shadows would be
+    // rewriting tone rather than redistributing marks.
+    const a = render({ ...BASE }, 0.45);
+    const b = render({ ...BASE, dash: DASH }, 0.45);
+    let same = 0;
+    for (let i = 0; i < a.mask.length; i++) if (a.mask[i] === b.mask[i]) same++;
+    expect(same / a.mask.length).toBeGreaterThan(0.95);
+  });
+
+  it('does not disturb tonal linearity', () => {
+    const field: PatternFieldKind = { ...BASE, dash: DASH };
+    for (const tone of [0.25, 0.5, 0.75]) {
+      expect(stats(field, tone).ink).toBeCloseTo(1 - tone, 1);
+    }
   });
 });
