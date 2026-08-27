@@ -255,10 +255,28 @@ export interface PatternShaping {
   invert: boolean;
 }
 
+/** Neutral: ink demand is exactly 1 - luminance, end to end. */
 export const defaultShaping: PatternShaping = {
   gamma: 1,
   solidAt: 0,
   dropAt: 1,
+  invert: false,
+};
+
+/**
+ * What a screen actually wants pointed at artwork.
+ *
+ * The neutral curve screens everything, including the two things that should
+ * not be screened: near-black linework shatters into dots instead of printing
+ * as a line, and paper-white picks up a dusting of ink instead of staying
+ * stock. Clamping both ends fixes it — solid ink below, bare paper above, and
+ * the field does its work over the range in between, which is the range that
+ * actually carries tone.
+ */
+export const printShaping: PatternShaping = {
+  gamma: 1,
+  solidAt: 0.12,
+  dropAt: 0.93,
   invert: false,
 };
 
@@ -909,6 +927,24 @@ export function renderPatternScreen(
       }
       out[i] = Math.round((hits / subs) * 255);
     }
+  }
+  return { width, height, data: out };
+}
+
+/**
+ * Lay an ink solid wherever it is called for at all, with no screen.
+ *
+ * The threshold is on ink demand rather than a field, so the result is the
+ * shape of the artwork instead of the shape of a pattern — which is what a
+ * line plate has to be.
+ */
+export function renderSolidInk(
+  lum: LumImage, p: PatternShaping, threshold = 0.5,
+): CoverageMap {
+  const { width, height } = lum;
+  const out = new Uint8Array(width * height);
+  for (let i = 0; i < out.length; i++) {
+    out[i] = inkDemand(lum.data[i], p) >= threshold ? 255 : 0;
   }
   return { width, height, data: out };
 }

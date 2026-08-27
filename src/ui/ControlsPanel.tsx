@@ -818,7 +818,11 @@ function PatternScreenControls({
         <select value={activePreset?.id ?? ''}
           onChange={(e) => {
             const found = findPatternPreset(e.target.value);
-            if (found) onChange({ ...mode, pattern: structuredClone(found.params) });
+            // Keep the current tone curve: a preset chooses the pattern, the
+            // shaping belongs to the artwork being screened.
+            if (found) {
+              onChange({ ...mode, pattern: { ...structuredClone(found.params), shaping: { ...p.shaping } } });
+            }
           }}>
           {!activePreset && <option value="">Custom</option>}
           {PATTERN_PRESETS.map((x) => (
@@ -828,6 +832,16 @@ function PatternScreenControls({
       </div>
       <Slider label="Cell size" value={p.cellSize} min={1} max={40} step={0.5}
         onChange={(val) => setP({ cellSize: val })} />
+      {sourceWidth > 0 && (
+        <div className="row">
+          <label />
+          <button className="ghost"
+            title="Set a fine screen for this image's resolution (about 200 cells across)"
+            onClick={() => setP({ cellSize: +Math.max(1.5, Math.min(40, sourceWidth / 200)).toFixed(1) })}>
+            Fit to image ({(sourceWidth / 200).toFixed(1)}px)
+          </button>
+        </div>
+      )}
       <Slider label="Angle" value={p.angleDeg} min={0} max={180} step={0.5}
         onChange={(val) => setP({ angleDeg: val })} />
       <p className="hint">
@@ -939,8 +953,22 @@ function PatternInkControls({
           <p className="hint">
             Each ink is separated first, then screened at its own angle so the
             dots interleave instead of stacking. Angles want to stay far apart
-            — matching two inks moirés them together.
+            — matching two inks moirés them together. Tick an ink to print it
+            solid instead: line art has no tone to reproduce, so screening a
+            black plate shatters the drawing rather than reproducing it.
           </p>
+          {inks.kind === 'cmyk' && (
+            <>
+              <Slider label="Black level" value={inks.blackGamma ?? 1} min={1} max={4} step={0.1}
+                onChange={(val) => onChange({ ...inks, blackGamma: val })} />
+              <p className="hint">
+                How much black is pulled out of coloured areas. At 1 every
+                colour carries the largest black it can, so the whole image
+                wears a scatter of black dots; raising it hands colour back to
+                CMY and leaves black to the shadows.
+              </p>
+            </>
+          )}
           {inks.channels.map((ch, i) => (
             <div className="row" key={i}>
               <label style={{ minWidth: 0, flex: '0 0 46px' }}>
@@ -952,11 +980,18 @@ function PatternInkControls({
                 onChange={(e) => setChannel(i, { color: e.target.value })} />
               <input type="number" min={0} max={180} step={0.5} value={ch.angleDeg}
                 title="screen angle"
+                disabled={!!ch.solid}
                 onChange={(e) => {
                   const n = Number(e.target.value);
                   if (Number.isFinite(n)) setChannel(i, { angleDeg: n });
                 }}
                 style={{ width: 60 }} />
+              <label title="print this ink solid instead of screening it"
+                style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input type="checkbox" checked={!!ch.solid}
+                  onChange={(e) => setChannel(i, { solid: e.target.checked })} />
+                solid
+              </label>
             </div>
           ))}
         </>

@@ -153,3 +153,54 @@ describe('runCachedPipeline — caching', () => {
     }
   });
 });
+
+describe('pattern screen inks', () => {
+  it('pulls black out of coloured areas as blackGamma rises', () => {
+    // A maximum-GCR separation puts a heavy black component on every colour,
+    // so once screened the image wears black dots everywhere. Raising the
+    // exponent hands colour back to CMY.
+    const mode = defaultPatternScreenMode();
+    if (mode.kind !== 'patternScreen') throw new Error('unreachable');
+    const kInk = (blackGamma: number): number => {
+      const inks = { ...defaultPatternCmyk(), blackGamma };
+      const out = runCachedPipeline(new Cache(), src, params({ ...mode, inks }));
+      if (out.kind !== 'field') throw new Error('expected field');
+      const k = out.layers[out.layers.length - 1].coverage;
+      let sum = 0;
+      for (let i = 0; i < k.data.length; i++) sum += k.data[i] / 255;
+      return sum / k.data.length;
+    };
+    expect(kInk(2.5)).toBeLessThan(kInk(1) * 0.8);
+  });
+
+  it('lays a solid ink as the artwork shape, not the screen shape', () => {
+    // A solid plate must not carry the field's pattern at all — that is the
+    // difference between printing a drawing and screening it.
+    const mode = defaultPatternScreenMode();
+    if (mode.kind !== 'patternScreen') throw new Error('unreachable');
+    const run = (solid: boolean) => {
+      const inks = defaultPatternCmyk();
+      if (inks.kind !== 'cmyk') throw new Error('unreachable');
+      inks.channels = inks.channels.map((c) => ({ ...c, solid: c.key === 'K' ? solid : false }));
+      const out = runCachedPipeline(new Cache(), src, params({ ...mode, inks }));
+      if (out.kind !== 'field') throw new Error('expected field');
+      return out.layers[out.layers.length - 1].coverage;
+    };
+    const screened = run(false);
+    const solid = run(true);
+    // Screening breaks a region into many marks; a solid plate leaves it whole.
+    const runsOf = (c: typeof screened): number => {
+      let runs = 0;
+      for (let y = 0; y < c.height; y++) {
+        let prev = 0;
+        for (let x = 0; x < c.width; x++) {
+          const v = c.data[y * c.width + x] > 127 ? 1 : 0;
+          if (v && !prev) runs++;
+          prev = v;
+        }
+      }
+      return runs;
+    };
+    expect(runsOf(solid)).toBeLessThan(runsOf(screened) * 0.6);
+  });
+});

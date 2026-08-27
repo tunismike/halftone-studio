@@ -47,10 +47,22 @@ function canonical(value: unknown): string {
   return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(',')}}`;
 }
 
-/** The preset these params match exactly, if any. */
+/**
+ * The preset these params match, if any.
+ *
+ * Tone shaping is deliberately excluded. A preset names a pattern — which
+ * field, at what scale and angle, warped how. How much ink a given luminance
+ * calls for is a property of the artwork being screened, not of the pattern,
+ * and the two get set independently. Comparing them together would report
+ * "Custom" the moment anyone touched a tone control.
+ */
 export function matchPatternPreset(params: PatternScreenParams): PatternPreset | undefined {
-  const key = canonical(params);
-  return PATTERN_PRESETS.find((p) => canonical(p.params) === key);
+  const strip = (p: PatternScreenParams): unknown => {
+    const { shaping: _shaping, ...rest } = p;
+    return rest;
+  };
+  const key = canonical(strip(params));
+  return PATTERN_PRESETS.find((p) => canonical(strip(p.params)) === key);
 }
 
 // A broad, smooth bend — long next to the screen period, so the lattice stays

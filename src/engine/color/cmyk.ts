@@ -7,8 +7,30 @@ export interface CmykSeparation {
   k: LumImage;
 }
 
-export function rgbaToCmyk(src: RgbaImage): CmykSeparation {
+export interface CmykOptions {
+  /**
+   * How much of the extractable black actually goes on the K plate.
+   *
+   * The naive separation sets K to 1 - max(r,g,b), which is maximum grey
+   * component replacement: it pulls the largest possible black out of every
+   * colour. Minimal total ink, but it means a mid-tone colour carries ~40% K,
+   * and once that is screened the artwork wears a scatter of black dots
+   * everywhere — the image reads as something seen through a black screen
+   * rather than as something printed in colour.
+   *
+   * Raising the exponent bends K down through the midtones while leaving the
+   * shadows alone: at 2.2, a 40% black component becomes 13% and a 90% one
+   * stays at 79%, so colour is carried by CMY and K goes back to doing what it
+   * is for. CMY are recomputed against whatever K is left, so the colour still
+   * reproduces; the cost is more total ink, which matters on press and not on
+   * screen. 1 reproduces the old behaviour exactly.
+   */
+  blackGamma?: number;
+}
+
+export function rgbaToCmyk(src: RgbaImage, opts: CmykOptions = {}): CmykSeparation {
   const { width, height, data } = src;
+  const gamma = Math.max(0.2, opts.blackGamma ?? 1);
   const n = width * height;
   const c = new Float32Array(n);
   const m = new Float32Array(n);
@@ -19,14 +41,18 @@ export function rgbaToCmyk(src: RgbaImage): CmykSeparation {
     const r = (data[i] / 255) * a + (1 - a);
     const g = (data[i + 1] / 255) * a + (1 - a);
     const b = (data[i + 2] / 255) * a + (1 - a);
-    const kk = 1 - Math.max(r, g, b);
+    const kFull = 1 - Math.max(r, g, b);
+    const kk = gamma === 1 ? kFull : Math.pow(kFull, gamma);
     const denom = 1 - kk;
     if (denom < 1e-6) {
       c[j] = 0; m[j] = 0; y[j] = 0; k[j] = kk;
     } else {
-      c[j] = (1 - r - kk) / denom;
-      m[j] = (1 - g - kk) / denom;
-      y[j] = (1 - b - kk) / denom;
+      // Clamped because a pulled-back K can leave a channel needing more than
+      // full ink to hit the target; that colour is simply out of gamut for the
+      // reduced black, and clipping is the honest response.
+      c[j] = Math.min(1, Math.max(0, (1 - r - kk) / denom));
+      m[j] = Math.min(1, Math.max(0, (1 - g - kk) / denom));
+      y[j] = Math.min(1, Math.max(0, (1 - b - kk) / denom));
       k[j] = kk;
     }
   }

@@ -31,7 +31,7 @@ import { simulatePattern, type RdField } from './noise/reaction-diffusion';
 import { reactionDiffusionScreen } from './screen/reaction-diffusion-screen';
 import { runRdContour, rdContourToMarkSet } from './mode/rd-contour';
 import {
-  bakePatternField, renderPatternScreen,
+  bakePatternField, renderPatternScreen, renderSolidInk,
   type CoverageMap, type PatternTile, type PatternScreenParams,
 } from './screen/pattern-field';
 import { KERNELS } from './dither/kernels';
@@ -92,9 +92,15 @@ function runPatternScreen(
   const inks = mode.inks ?? { kind: 'mono' as const };
 
   // Screen one separation. `tone` is luminance-shaped: 0 lays full ink.
+  // A solid ink skips the screen entirely and prints its own shape.
   const screen = (
-    id: string, tone: LumImage, angleDeg: number, scale: number,
+    id: string, tone: LumImage, angleDeg: number, scale: number, solid = false,
   ): CoverageMap => {
+    if (solid) {
+      return cache.get<CoverageMap>(`pattern-solid:${id}`,
+        `${adjKey}|${JSON.stringify(ps.shaping)}`,
+        () => renderSolidInk(tone, ps.shaping));
+    }
     const params: PatternScreenParams = {
       ...ps,
       angleDeg,
@@ -111,7 +117,10 @@ function runPatternScreen(
     const lum = getLum(cache, src, srcKey, p.adjust);
     layers.push({ coverage: screen('mono', lum, ps.angleDeg, 1), ink: p.foreground });
   } else if (inks.kind === 'cmyk') {
-    const sep = cache.get<CmykSeparation>('cmyk', srcKey, () => rgbaToCmyk(src));
+    const bg = inks.blackGamma ?? 1;
+    const sep = cache.get<CmykSeparation>('cmyk', `${srcKey}|bg${bg}`, () =>
+      rgbaToCmyk(src, { blackGamma: bg }),
+    );
     for (const ch of inks.channels) {
       if (!ch.enabled) continue;
       // invertWithAdjust turns an ink-amount channel into the luminance shape
@@ -120,7 +129,7 @@ function runPatternScreen(
         invertWithAdjust(pickCmykChannel(sep, ch.key), p.adjust),
       );
       layers.push({
-        coverage: screen(`cmyk:${ch.key}`, tone, ch.angleDeg, ch.scale),
+        coverage: screen(`cmyk:${ch.key}`, tone, ch.angleDeg, ch.scale, ch.solid),
         ink: ch.color,
       });
     }
@@ -137,7 +146,7 @@ function runPatternScreen(
         invertWithAdjust(ink, p.adjust),
       );
       layers.push({
-        coverage: screen(`spot:${i}`, tone, ch.angleDeg, ch.scale),
+        coverage: screen(`spot:${i}`, tone, ch.angleDeg, ch.scale, ch.solid),
         ink: ch.color,
       });
     }

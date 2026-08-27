@@ -517,7 +517,7 @@ function patternSeparations(
       angleDeg: mode.pattern.angleDeg, scale: 1 }];
   }
   if (inks.kind === 'cmyk') {
-    const sep = rgbaToCmyk(src);
+    const sep = rgbaToCmyk(src, { blackGamma: inks.blackGamma ?? 1 });
     const pick = (k: string): LumImage =>
       k === 'C' ? sep.c : k === 'M' ? sep.m : k === 'Y' ? sep.y : sep.k;
     return inks.channels.filter((c) => c.enabled).map((c) => ({

@@ -14,7 +14,7 @@ import { defaultRegistration, type RegistrationParams } from './mark/registratio
 import { defaultRdScreenParams, type RdScreenParams } from './screen/reaction-diffusion-screen';
 import { defaultStippleParams, type StippleParams } from './screen/stipple';
 import { defaultRdContourParams, type RdContourParams } from './mode/rd-contour';
-import { defaultPatternScreen, type PatternScreenParams } from './screen/pattern-field';
+import { defaultPatternScreen, printShaping, type PatternScreenParams } from './screen/pattern-field';
 import { defaultPatternVector, type PatternVectorParams } from './export/pattern-output';
 import { defaultTraceOptions } from './trace/trace';
 import type { TextureOverlay } from './texture/types';
@@ -60,6 +60,16 @@ export interface ChannelConfig {
   angleDeg: number;
   scale: number;
   color: string;
+  /**
+   * Print this ink solid instead of screening it (pattern screens only).
+   *
+   * A halftone reproduces continuous tone. Line art has none — so screening a
+   * drawing's black plate does not reproduce it, it shatters it, and the
+   * result reads as a pattern laid over the artwork rather than as the artwork
+   * printed. Which is exactly why line-and-tint printing has always run the
+   * black plate solid and screened only the colour behind it.
+   */
+  solid?: boolean;
 }
 
 export interface SpotChannel {
@@ -68,6 +78,8 @@ export interface SpotChannel {
   enabled: boolean;
   angleDeg: number;
   scale: number;
+  /** Print this ink solid instead of screening it (pattern screens only). */
+  solid?: boolean;
 }
 
 export type PaletteAlgorithm =
@@ -86,7 +98,7 @@ export type PaletteAlgorithm =
  */
 export type PatternInks =
   | { kind: 'mono' }
-  | { kind: 'cmyk'; channels: ChannelConfig[] }
+  | { kind: 'cmyk'; channels: ChannelConfig[]; blackGamma?: number }
   | { kind: 'spot'; channels: SpotChannel[] };
 
 export const defaultPatternInks: PatternInks = { kind: 'mono' };
@@ -94,11 +106,16 @@ export const defaultPatternInks: PatternInks = { kind: 'mono' };
 export function defaultPatternCmyk(): PatternInks {
   return {
     kind: 'cmyk',
+    // Black pulled well back by default. Screening a maximum-GCR separation
+    // puts black dots over every colour in the image, which is the single
+    // thing that makes a colour halftone read as an overlay.
+    blackGamma: 2.2,
     channels: [
       { key: 'C', enabled: true, angleDeg: 15, scale: 1, color: '#00aaee' },
       { key: 'M', enabled: true, angleDeg: 75, scale: 1, color: '#e6008c' },
       { key: 'Y', enabled: true, angleDeg: 0, scale: 1, color: '#ffd000' },
-      { key: 'K', enabled: true, angleDeg: 45, scale: 1, color: '#111111' },
+      // The line plate runs solid: it carries the drawing, not a tone.
+      { key: 'K', enabled: true, angleDeg: 45, scale: 1, color: '#111111', solid: true },
     ],
   };
 }
@@ -286,7 +303,7 @@ export function defaultPatternScreenMode(): ModeKind {
     pattern: {
       ...defaultPatternScreen,
       warp: { ...defaultPatternScreen.warp },
-      shaping: { ...defaultPatternScreen.shaping },
+      shaping: { ...printShaping },
     },
     inks: { ...defaultPatternInks },
     vector: { ...defaultPatternVector },

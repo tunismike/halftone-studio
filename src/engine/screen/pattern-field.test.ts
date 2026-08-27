@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   bakePatternField, renderPatternScreen, equalizeTile, inkDemand,
-  defaultShaping, noPatternWarp, coverageToMask, defaultPatternScreen,
-  type PatternFieldKind, type PatternScreenParams, type PatternTile,
+  defaultShaping, printShaping, noPatternWarp, coverageToMask, defaultPatternScreen,
+  type PatternFieldKind, type PatternScreenParams, type PatternTile, type PatternShaping,
 } from './pattern-field';
 import { PATTERN_PRESETS, matchPatternPreset } from './pattern-presets';
 import type { LumImage } from '../image/types';
@@ -1012,5 +1012,42 @@ describe('mark wobble', () => {
     const a = bakePatternField({ ...BASE });
     const b = bakePatternField({ ...BASE, wobble: 0 });
     expect(Array.from(a.values)).toEqual(Array.from(b.values));
+  });
+});
+
+describe('print shaping', () => {
+  // The neutral curve screens everything, including the two things that must
+  // not be screened. These are the defects that made a screened poster read as
+  // a pattern laid over the art rather than as the art printed.
+  function inked(shaping: PatternShaping, tone: number): number {
+    const field: PatternFieldKind = { kind: 'roundDot' };
+    const w = 120, h = 120;
+    const data = new Float32Array(w * h);
+    data.fill(tone);
+    const cov = renderPatternScreen({ width: w, height: h, data },
+      bakePatternField(field), params(field, { cellSize: 6, angleDeg: 22.5, shaping }));
+    let sum = 0;
+    for (let i = 0; i < cov.data.length; i++) sum += cov.data[i] / 255;
+    return sum / cov.data.length;
+  }
+
+  it('keeps near-black solid instead of shattering it into dots', () => {
+    // Line art sits just off pure black. Neutral shaping screens it; print
+    // shaping lays it down solid, which is what a line plate has to do.
+    expect(inked(defaultShaping, 0.06)).toBeLessThan(0.99);
+    expect(inked(printShaping, 0.06)).toBe(1);
+  });
+
+  it('keeps paper bare instead of dusting it', () => {
+    // Off-white stock should stay stock, not pick up a light screen.
+    expect(inked(defaultShaping, 0.96)).toBeGreaterThan(0);
+    expect(inked(printShaping, 0.96)).toBe(0);
+  });
+
+  it('still carries tone linearly between the clamps', () => {
+    // Clamping the ends must not bend the middle: the range that actually
+    // carries tone still has to reproduce it.
+    const mid = (printShaping.solidAt + printShaping.dropAt) / 2;
+    expect(inked(printShaping, mid)).toBeCloseTo(0.5, 1);
   });
 });
