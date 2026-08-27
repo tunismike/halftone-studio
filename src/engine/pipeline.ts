@@ -99,7 +99,19 @@ export type PaletteAlgorithm =
 export type PatternInks =
   | { kind: 'mono' }
   | { kind: 'cmyk'; channels: ChannelConfig[]; blackGamma?: number }
-  | { kind: 'spot'; channels: SpotChannel[] };
+  | { kind: 'spot'; channels: SpotChannel[] }
+  /**
+   * Gradient map to an ordered palette, dithered by the screen.
+   *
+   * Not a separation at all — the opposite idea. Rather than splitting the
+   * image into inks that overprint, luminance is mapped onto a ramp of
+   * colours, darkest first, and the field decides the handoff between each
+   * adjacent pair: a pixel sitting 30% of the way from one colour to the next
+   * takes the next one wherever the threshold falls below 0.30. So the
+   * transitions are halftoned while each band stays a flat spot colour, which
+   * is what makes the look printable in N screens of solid ink.
+   */
+  | { kind: 'palette'; colors: string[] };
 
 export const defaultPatternInks: PatternInks = { kind: 'mono' };
 
@@ -118,6 +130,11 @@ export function defaultPatternCmyk(): PatternInks {
       { key: 'K', enabled: true, angleDeg: 45, scale: 1, color: '#111111', solid: true },
     ],
   };
+}
+
+export function defaultPatternPalette(): PatternInks {
+  // Dark to light. Shadows take the first colour, highlights the last.
+  return { kind: 'palette', colors: ['#101020', '#2a3ea8', '#e0338c', '#f5d020'] };
 }
 
 export function defaultPatternSpot(): PatternInks {

@@ -62,6 +62,7 @@ export function renderCoverageToCanvas(
   layers: Array<{ coverage: { width: number; height: number; data: Uint8Array }; ink: string }>,
   width: number, height: number,
   background: string, transparent: boolean, canvas: AnyCanvas,
+  blend: 'multiply' | 'normal' = 'multiply',
 ): void {
   canvas.width = width;
   canvas.height = height;
@@ -87,9 +88,16 @@ export function renderCoverageToCanvas(
     for (let i = 0; i < n; i++) {
       const a = cov[i] / 255;
       if (a === 0) continue;
-      r[i] *= 1 - a * (1 - ink.r);
-      g[i] *= 1 - a * (1 - ink.g);
-      b[i] *= 1 - a * (1 - ink.b);
+      if (blend === 'normal') {
+        // Each pixel belongs to exactly one palette entry, so paint over.
+        r[i] = r[i] * (1 - a) + ink.r * a;
+        g[i] = g[i] * (1 - a) + ink.g * a;
+        b[i] = b[i] * (1 - a) + ink.b * a;
+      } else {
+        r[i] *= 1 - a * (1 - ink.r);
+        g[i] *= 1 - a * (1 - ink.g);
+        b[i] *= 1 - a * (1 - ink.b);
+      }
       // Coverage unions across inks: paper shows only where no ink landed.
       alpha[i] = alpha[i] + a - alpha[i] * a;
     }
@@ -102,13 +110,19 @@ export function renderCoverageToCanvas(
       out[j + 2] = Math.round(b[i] * 255);
       out[j + 3] = 255;
     } else {
-      // Un-multiply against the notional white paper so the ink keeps its
-      // colour where coverage is partial.
       const a = alpha[i];
       if (a <= 0) { out[j] = out[j + 1] = out[j + 2] = out[j + 3] = 0; continue; }
-      out[j] = Math.round(Math.min(1, Math.max(0, 1 - (1 - r[i]) / a)) * 255);
-      out[j + 1] = Math.round(Math.min(1, Math.max(0, 1 - (1 - g[i]) / a)) * 255);
-      out[j + 2] = Math.round(Math.min(1, Math.max(0, 1 - (1 - b[i]) / a)) * 255);
+      if (blend === 'normal') {
+        out[j] = Math.round(r[i] * 255);
+        out[j + 1] = Math.round(g[i] * 255);
+        out[j + 2] = Math.round(b[i] * 255);
+      } else {
+        // Un-multiply against the notional white paper so the ink keeps its
+        // colour where coverage is partial.
+        out[j] = Math.round(Math.min(1, Math.max(0, 1 - (1 - r[i]) / a)) * 255);
+        out[j + 1] = Math.round(Math.min(1, Math.max(0, 1 - (1 - g[i]) / a)) * 255);
+        out[j + 2] = Math.round(Math.min(1, Math.max(0, 1 - (1 - b[i]) / a)) * 255);
+      }
       out[j + 3] = Math.round(a * 255);
     }
   }

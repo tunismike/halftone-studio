@@ -54,6 +54,10 @@ export type PatternFieldKind =
   | { kind: 'roundDot'; hex?: boolean }
   // Parallel lines, width tracking coverage.
   | { kind: 'line' }
+  // Two line screens crossed. Ink lands where EITHER line falls, so the
+  // highlights read as an open grid of crossing strokes rather than as dots —
+  // a crosshatch, which no single-lattice dot field produces.
+  | { kind: 'crossLine'; angleOffsetDeg: number }
   // --- baked fields ---------------------------------------------------------
   // Every one of these is generated once, rank-equalized, and then read exactly
   // like an analytic field. Their raw distributions are wildly non-uniform —
@@ -439,6 +443,14 @@ function lineRaw(u: number): number {
   return Math.abs(u - Math.round(u)) * 2;
 }
 
+// Nearer of two line screens: the union of both sets of strokes.
+function crossLineRaw(u: number, v: number, offsetDeg: number): number {
+  const t = (offsetDeg * Math.PI) / 180;
+  const c = Math.cos(t);
+  const s = Math.sin(t);
+  return Math.min(lineRaw(u), lineRaw(u * c + v * s));
+}
+
 // Hex Euclidean dot. Three cosines along the triangular lattice's directions.
 // Every term is periodic over u+1 and v+1 AND over the half-step (u+1/2, v+1/2),
 // which is exactly the staggered-row symmetry — so it bakes into a tile of
@@ -618,6 +630,12 @@ export function bakePatternField(field: PatternFieldKind): PatternTile {
         : { size: TILE, values: equalizeTile(bakeAnalytic(roundDotRaw)), tileCells: 1, aspect: 1, smooth: true };
     case 'line':
       return { size: TILE, values: equalizeTile(bakeAnalytic((u) => lineRaw(u))), tileCells: 1, aspect: 1, smooth: true };
+    case 'crossLine':
+      return {
+        size: TILE,
+        values: equalizeTile(bakeAnalytic((u, v) => crossLineRaw(u, v, field.angleOffsetDeg))),
+        tileCells: 1, aspect: 1, smooth: true,
+      };
 
     case 'blueNoise': {
       // Already a rank matrix, so equalization is a formality — but running it
@@ -947,6 +965,77 @@ export function renderSolidInk(
     out[i] = inkDemand(lum.data[i], p) >= threshold ? 255 : 0;
   }
   return { width, height, data: out };
+}
+
+/**
+ * Gradient map: assign every pixel one entry of an ordered palette, using the
+ * field to dither the handoff between adjacent entries.
+ *
+ * A pixel landing 30% of the way from one colour to the next takes the next one
+ * wherever the threshold falls below 0.30. Because the field is equalized, that
+ * happens on exactly 30% of such pixels — so the blend is proportional and the
+ * bands stay flat spot colours rather than becoming a gradient.
+ *
+ * Returns one binary coverage map per palette entry.
+ */
+export function renderPaletteScreen(
+  lum: LumImage, tile: PatternTile, p: PatternScreenParams, bands: number,
+): CoverageMap[] {
+  const { width, height } = lum;
+  const out: CoverageMap[] = [];
+  for (let i = 0; i < bands; i++) {
+    out.push({ width, height, data: new Uint8Array(width * height) });
+  }
+  if (bands === 0) return out;
+  const last = bands - 1;
+  const cell = Math.max(0.5, p.cellSize) * tile.tileCells;
+  const kx = tile.size / cell;
+  const ky = tile.size / (cell * tile.aspect);
+  const theta = (p.angleDeg * Math.PI) / 180;
+  const ct = Math.cos(theta);
+  const st = Math.sin(theta);
+  const ax = ct * kx, ay = st * kx;
+  const bx = -st * ky, by = ct * ky;
+  const w = p.warp;
+  const warped = !isIdentityWarp(w);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      // inkDemand honours the tone controls; invert it back to a light-to-dark
+      // position so palette entry 0 is the shadow end.
+      const t = 1 - inkDemand(lum.data[i], p.shaping);
+      const pos = t * last;
+      let lo = Math.floor(pos);
+      if (lo < 0) lo = 0;
+      if (lo > last) lo = last;
+      const frac = pos - lo;
+      let idx = lo;
+      if (lo < last && frac > 0) {
+        let wx = 0;
+        let wy = 0;
+        if (warped) {
+          const cx = x + 0.5;
+          const cy = y + 0.5;
+          if (w.waveAmp !== 0) {
+            wx += w.waveAmp * Math.sin(w.waveFreq * cy + w.wavePhase);
+            wy += w.waveAmp * Math.sin(w.waveFreq * cx + w.wavePhase + Math.PI / 2);
+          }
+          if (w.noiseAmp !== 0) {
+            const nx = fbm(cx * w.noiseFreq, cy * w.noiseFreq, w.noiseSeed, WARP_FBM);
+            const ny = fbm(cx * w.noiseFreq, cy * w.noiseFreq, w.noiseSeed + 9173, WARP_FBM);
+            wx += w.noiseAmp * (nx - 0.5) * 2;
+            wy += w.noiseAmp * (ny - 0.5) * 2;
+          }
+        }
+        const px = x + 0.5 + wx;
+        const py = y + 0.5 + wy;
+        if (sampleTile(tile, px * ax + py * ay, px * bx + py * by) < frac) idx = lo + 1;
+      }
+      out[idx].data[i] = 255;
+    }
+  }
+  return out;
 }
 
 /** Threshold a coverage map to a 0/1 mask for tracing or knockout export. */

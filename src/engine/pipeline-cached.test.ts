@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Cache } from './cache';
 import { runCachedPipeline } from './pipeline-cached';
 import { defaultAdjust } from './image/adjust';
+import { defaultShaping } from './screen/pattern-field';
 import {
   defaultVectorMode, defaultCmykMode, defaultSpotMode, defaultPaletteDitherMode,
   defaultTonalMode, defaultRdContourMode, defaultTraceMode, defaultPatternScreenMode,
@@ -202,5 +203,70 @@ describe('pattern screen inks', () => {
       return runs;
     };
     expect(runsOf(solid)).toBeLessThan(runsOf(screened) * 0.6);
+  });
+});
+
+describe('palette pattern screen', () => {
+  const paletteMode = (colors: string[]) => {
+    const mode = defaultPatternScreenMode();
+    if (mode.kind !== 'patternScreen') throw new Error('unreachable');
+    return { ...mode, inks: { kind: 'palette' as const, colors } };
+  };
+
+  it('assigns every pixel exactly one palette entry', () => {
+    // A gradient map is a partition, not an overprint: any pixel covered twice
+    // would mean two colours claiming it, and any pixel covered zero times
+    // would leave a hole.
+    const colors = ['#101020', '#2a3ea8', '#e0338c', '#f5d020'];
+    const out = runCachedPipeline(new Cache(), src, params(paletteMode(colors)));
+    if (out.kind !== 'field') throw new Error('expected field');
+    expect(out.layers).toHaveLength(4);
+    expect(out.layers.map((l) => l.ink)).toEqual(colors);
+    const n = src.width * src.height;
+    for (let i = 0; i < n; i++) {
+      let hits = 0;
+      for (const l of out.layers) if (l.coverage.data[i] > 127) hits++;
+      expect(hits).toBe(1);
+    }
+  });
+
+  it('paints normally rather than multiplying', () => {
+    // Palette layers each own their pixels outright. Multiplying them, which is
+    // right for overprinting inks, would drive everything toward black.
+    const pal = runCachedPipeline(new Cache(), src, params(paletteMode(['#000000', '#ffffff'])));
+    const cmyk = runCachedPipeline(new Cache(), src,
+      params({ ...paletteMode([]), inks: defaultPatternCmyk() }));
+    if (pal.kind !== 'field' || cmyk.kind !== 'field') throw new Error('expected field');
+    expect(pal.blend).toBe('normal');
+    expect(cmyk.blend).toBe('multiply');
+  });
+
+  it('splits a flat tone between neighbours in proportion to where it sits', () => {
+    // The point of dithering the handoff: a tone a third of the way from one
+    // colour to the next takes the next on about a third of its pixels, so the
+    // ramp reads continuously while every band stays a flat spot colour.
+    const flat = (v: number) => {
+      const w = 160, h = 160;
+      const data = new Uint8ClampedArray(w * h * 4);
+      for (let i = 0; i < w * h; i++) {
+        const g = Math.round(v * 255);
+        data[i * 4] = g; data[i * 4 + 1] = g; data[i * 4 + 2] = g; data[i * 4 + 3] = 255;
+      }
+      return { width: w, height: h, data };
+    };
+    // Neutral shaping, so position along the ramp is luminance itself. With
+    // the mode's print defaults the clamps would remap it first, which is
+    // correct behaviour but would be measuring the tone curve, not the dither.
+    const mode = paletteMode(['#000000', '#ffffff']);
+    const neutral = {
+      ...mode,
+      pattern: { ...mode.pattern, shaping: { ...defaultShaping } },
+    };
+    const out = runCachedPipeline(new Cache(), flat(0.33), params(neutral));
+    if (out.kind !== 'field') throw new Error('expected field');
+    let upper = 0;
+    const total = out.layers[1].coverage.data.length;
+    for (let i = 0; i < total; i++) if (out.layers[1].coverage.data[i] > 127) upper++;
+    expect(upper / total).toBeCloseTo(0.33, 1);
   });
 });

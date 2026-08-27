@@ -11,6 +11,7 @@ import {
   defaultPatternInks,
   defaultPatternCmyk,
   defaultPatternSpot,
+  defaultPatternPalette,
   defaultPoissonScreen,
   defaultRadialScreen,
   defaultRdContourMode,
@@ -922,9 +923,14 @@ function PatternInkControls({
   onChange: (i: PatternInks) => void;
 }) {
   const setChannel = (idx: number, patch: Record<string, unknown>): void => {
-    if (inks.kind === 'mono') return;
-    const channels = inks.channels.map((c, i) => (i === idx ? { ...c, ...patch } : c));
-    onChange({ ...inks, channels } as PatternInks);
+    if (inks.kind !== 'cmyk' && inks.kind !== 'spot') return;
+    const channels = (inks.channels as unknown as Array<Record<string, unknown>>)
+      .map((c, i) => (i === idx ? { ...c, ...patch } : c));
+    onChange({ ...inks, channels } as unknown as PatternInks);
+  };
+  const setColor = (idx: number, hex: string): void => {
+    if (inks.kind !== 'palette') return;
+    onChange({ ...inks, colors: inks.colors.map((c, i) => (i === idx ? hex : c)) });
   };
   return (
     <>
@@ -935,14 +941,41 @@ function PatternInkControls({
             const k = e.target.value;
             onChange(k === 'cmyk' ? defaultPatternCmyk()
               : k === 'spot' ? defaultPatternSpot()
+              : k === 'palette' ? defaultPatternPalette()
               : { ...defaultPatternInks });
           }}>
           <option value="mono">Single ink (luminance)</option>
           <option value="cmyk">CMYK (full colour)</option>
           <option value="spot">Spot colours</option>
+          <option value="palette">Palette (gradient map)</option>
         </select>
       </div>
-      {inks.kind === 'mono' ? (
+      {inks.kind === 'palette' ? (
+        <>
+          <p className="hint">
+            Not a separation — a gradient map. Luminance runs along the ramp,
+            darkest colour first, and the screen dithers the handoff between
+            each neighbouring pair. Bands stay flat spot colours, so it prints
+            in as many screens as you have swatches.
+          </p>
+          {inks.colors.map((hex, i) => (
+            <div className="row" key={i}>
+              <label style={{ flex: '0 0 64px' }}>{i === 0 ? 'shadow' : i === inks.colors.length - 1 ? 'light' : `step ${i}`}</label>
+              <input type="color" value={hex} onChange={(e) => setColor(i, e.target.value)} />
+              <button className="ghost" title="remove this colour"
+                disabled={inks.colors.length <= 2}
+                onClick={() => onChange({ ...inks, colors: inks.colors.filter((_, j) => j !== i) })}>−</button>
+            </div>
+          ))}
+          <div className="row">
+            <label />
+            <button className="ghost" disabled={inks.colors.length >= 8}
+              onClick={() => onChange({ ...inks, colors: [...inks.colors, '#ffffff'] })}>
+              + Add colour
+            </button>
+          </div>
+        </>
+      ) : inks.kind === 'mono' ? (
         <p className="hint">
           Screens luminance into one ink. A colour source loses its hues here —
           saturated colours that look nothing alike can share a luminance and

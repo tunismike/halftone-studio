@@ -31,7 +31,7 @@ import { simulatePattern, type RdField } from './noise/reaction-diffusion';
 import { reactionDiffusionScreen } from './screen/reaction-diffusion-screen';
 import { runRdContour, rdContourToMarkSet } from './mode/rd-contour';
 import {
-  bakePatternField, renderPatternScreen, renderSolidInk,
+  bakePatternField, renderPatternScreen, renderSolidInk, renderPaletteScreen,
   type CoverageMap, type PatternTile, type PatternScreenParams,
 } from './screen/pattern-field';
 import { KERNELS } from './dither/kernels';
@@ -133,6 +133,16 @@ function runPatternScreen(
         ink: ch.color,
       });
     }
+  } else if (inks.kind === 'palette') {
+    const lum = getLum(cache, src, srcKey, p.adjust);
+    const colors = inks.colors;
+    const maps = cache.get<CoverageMap[]>('pattern-palette',
+      `${adjKey}|${JSON.stringify(ps)}|${colors.join(',')}`,
+      () => renderPaletteScreen(lum, tile, ps, colors.length),
+    );
+    for (let i = 0; i < colors.length; i++) {
+      layers.push({ coverage: maps[i], ink: colors[i] });
+    }
   } else {
     for (let i = 0; i < inks.channels.length; i++) {
       const ch = inks.channels[i];
@@ -155,6 +165,9 @@ function runPatternScreen(
   return {
     kind: 'field',
     layers,
+    // A palette assigns each pixel one colour, so its layers paint normally;
+    // inks overprint, so they multiply.
+    blend: inks.kind === 'palette' ? 'normal' : 'multiply',
     width: src.width,
     height: src.height,
     background: p.background,

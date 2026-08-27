@@ -524,6 +524,12 @@ function patternSeparations(
       name: c.key, ink: c.color, tone: adj(pick(c.key)), angleDeg: c.angleDeg, scale: c.scale,
     }));
   }
+  if (inks.kind === 'palette') {
+    // A gradient map has no per-ink separation to trace; SVG export falls back
+    // to the mono path rather than emitting something structurally wrong.
+    return [{ name: 'ink', ink: params.foreground, tone: patternLum(src, params),
+      angleDeg: mode.pattern.angleDeg, scale: 1 }];
+  }
   return inks.channels.filter((c) => c.enabled).map((c) => {
     const h = c.color.replace('#', '');
     const n = parseInt(h.length === 3 ? h.split('').map((x) => x + x).join('') : h, 16);
@@ -585,7 +591,7 @@ function drawOutput(canvas: OffscreenCanvas, out: Output, superSample = false): 
   } else if (out.kind === 'indexed') {
     renderIndexedToCanvas(out.image, canvas);
   } else if (out.kind === 'field') {
-    renderCoverageToCanvas(out.layers, out.width, out.height, out.background, out.transparent, canvas);
+    renderCoverageToCanvas(out.layers, out.width, out.height, out.background, out.transparent, canvas, out.blend);
   } else if (out.kind === 'traced') {
     renderTracedToCanvas(out.regions, out.width, out.height, out.background, out.transparent, canvas);
   } else if (superSample) {

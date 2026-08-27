@@ -11,6 +11,7 @@ const ALL_FIELDS: PatternFieldKind[] = [
   { kind: 'cosDot' },
   { kind: 'roundDot' },
   { kind: 'line' },
+  { kind: 'crossLine', angleOffsetDeg: 90 },
   { kind: 'cosDot', hex: true },
   { kind: 'roundDot', hex: true },
 ];

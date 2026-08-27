@@ -18,6 +18,12 @@ export type Output =
   | {
       kind: 'field';
       layers: Array<{ coverage: CoverageMap; ink: string }>;
+      /**
+       * How the layers combine. Inks multiply — cyan over yellow is green.
+       * A palette instead assigns each pixel exactly one colour, so its layers
+       * paint normally and multiplying them would just turn everything black.
+       */
+      blend: 'multiply' | 'normal';
       width: number;
       height: number;
       background: string;

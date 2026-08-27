@@ -96,6 +96,18 @@ export const PATTERN_PRESETS: PatternPreset[] = [
   preset('angle-lines-1', 'Angle Lines 1', {
     field: { kind: 'line' }, cellSize: 9, angleDeg: 45,
   }),
+  preset('crossline', 'Crossline', {
+    field: { kind: 'crossLine', angleOffsetDeg: 90 }, cellSize: 13, angleDeg: 45,
+  }),
+  // The same crossing strokes bent by the warp, which is what turns a
+  // crosshatch into a rippled weave.
+  preset('crossline-ripple', 'Crossline Ripple', {
+    field: { kind: 'crossLine', angleOffsetDeg: 75 }, cellSize: 12, angleDeg: 30,
+    warp: wave(13, 0.02),
+  }),
+  preset('ripple', 'Ripple', {
+    field: { kind: 'line' }, cellSize: 11, angleDeg: 60, warp: wave(20, 0.028),
+  }),
   preset('angle-lines-2', 'Angle Lines 2', {
     field: { kind: 'line' }, cellSize: 12, angleDeg: 135,
   }),
